@@ -1,5 +1,5 @@
 import Employee from "../models/Employee.js";
-
+import { createRateLimiter } from "../middleware/rateLimit.js";
 import {
   getCachedDirectory,
   setCachedDirectory,
@@ -40,6 +40,12 @@ const wouldCreateCycle = async (employeeId, managerId) => {
 
   return false;
 };
+const createEmployeeLimiter = createRateLimiter({
+  keyPrefix: "create-employee",
+  maxAttempts: 30,
+  windowSeconds: 3600,
+});
+
 
 export const createEmployee = async (req, res) => {
   try {
@@ -55,6 +61,16 @@ export const createEmployee = async (req, res) => {
     if (!name || !email || !jobTitle || !department) {
       return res.status(400).json({
         message: "name, email, jobTitle and department are required",
+      });
+    }
+
+    const adminId = req.user._id.toString();
+
+    const allowed = await createEmployeeLimiter.check(adminId);
+
+    if (!allowed) {
+      return res.status(429).json({
+        message: "Too many employee creation attempts. Please try again later.",
       });
     }
 
@@ -88,7 +104,8 @@ export const createEmployee = async (req, res) => {
       status: "active",
     });
 
-    // MongoDB write succeeded, so now invalidate the cache.
+    await createEmployeeLimiter.record(adminId);
+
     await invalidateDirectoryCache();
 
     res.status(201).json(employee);

@@ -1,6 +1,13 @@
 import LeaveRequest from "../models/LeaveRequest.js";
 import Employee from "../models/Employee.js";
 import User from "../models/User.js";
+import { createRateLimiter } from "../middleware/rateLimit.js";
+
+const leaveDecisionLimiter = createRateLimiter({
+  keyPrefix: "leave-decision",
+  maxAttempts: 60,
+  windowSeconds: 900,
+});
 
 const VALID_STATUSES = [
   "pending",
@@ -89,7 +96,17 @@ export const approveOrRejectLeaveRequest = async (req, res) => {
 
     if (!["approved", "rejected"].includes(status)) {
       return res.status(400).json({
-        message: "status must be either approved or rejected",
+        message: "Status must be approved or rejected",
+      });
+    }
+
+    const reviewerId = req.user._id.toString();
+
+    const allowed = await leaveDecisionLimiter.check(reviewerId);
+
+    if (!allowed) {
+      return res.status(429).json({
+        message: "Too many leave decision attempts. Please try again later.",
       });
     }
 
@@ -103,80 +120,44 @@ export const approveOrRejectLeaveRequest = async (req, res) => {
 
     if (leaveRequest.status !== "pending") {
       return res.status(400).json({
-        message: "Only pending leave requests can be approved or rejected",
+        message: "Leave request has already been resolved",
       });
     }
 
-    // The requester is an Employee.
-    const requester = await Employee.findById(leaveRequest.employeeId)
-      .select("name email managerId status");
+    const requester = await Employee.findById(leaveRequest.employeeId);
 
     if (!requester) {
       return res.status(404).json({
-        message: "Requester employee not found",
+        message: "Requesting employee not found",
       });
     }
 
-    // The approver is a User, so resolve their linked Employee separately.
-    const approver = await User.findById(req.user._id)
-      .select("employeeId role");
+    if (req.user.role === "manager") {
+      const reviewer = await Employee.findById(req.user.employeeId);
 
-    if (!approver) {
-      return res.status(401).json({
-        message: "Approver account not found",
-      });
-    }
-
-    // Admins can override the normal manager relationship.
-    if (approver.role !== "admin") {
-      if (approver.role !== "manager") {
+      if (!reviewer || reviewer.status !== "active") {
         return res.status(403).json({
-          message: "Only managers or admins can approve leave requests",
+          message: "Manager account is inactive or invalid",
         });
       }
 
-      const approverEmployee = await Employee.findById(approver.employeeId)
-        .select("_id status");
-
-      if (!approverEmployee) {
-        return res.status(404).json({
-          message: "Approver employee record not found",
-        });
-      }
-
-      if (approverEmployee.status !== "active") {
-        return res.status(403).json({
-          message: "Approver employee is inactive",
-        });
-      }
-
-      if (!requester.managerId) {
-        return res.status(403).json({
-          message: "This employee does not have a manager assigned",
-        });
-      }
-
-      // IMPORTANT:
-      // requester.managerId is an Employee._id
-      // approverEmployee._id is an Employee._id
-      //
-      // Compare their values, not the Mongoose ObjectId references.
       if (
-        requester.managerId.toString() !==
-        approverEmployee._id.toString()
+        !requester.managerId ||
+        requester.managerId.toString() !== reviewer._id.toString()
       ) {
         return res.status(403).json({
-          message: "You can only approve leave for your direct reports",
+          message: "You can only manage leave requests from your direct reports",
         });
       }
     }
 
     leaveRequest.status = status;
+    leaveRequest.approvedBy = req.user._id;
+    leaveRequest.approvedAt = new Date();
 
-   leaveRequest.approvedBy = approver._id;
-leaveRequest.approvedAt = new Date();
+    await leaveRequest.save();
 
-await leaveRequest.save();
+    await leaveDecisionLimiter.record(reviewerId);
 
     res.json({
       message: `Leave request ${status} successfully`,
