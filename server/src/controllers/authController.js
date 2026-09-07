@@ -3,12 +3,33 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 import Employee from "../models/Employee.js";
+import { createRateLimiter } from "../middleware/rateLimit.js";
 
 const generateToken = (userId) => {
   return jwt.sign({ userId }, process.env.JWT_SECRET, {
     expiresIn: "7d",
   });
 };
+
+// Login rate limits
+const loginIpLimiter = createRateLimiter({
+  keyPrefix: "login:ip",
+  maxAttempts: 20,
+  windowSeconds: 900,
+});
+
+const loginEmailLimiter = createRateLimiter({
+  keyPrefix: "login:email",
+  maxAttempts: 5,
+  windowSeconds: 900,
+});
+
+// Admin account-creation rate limit
+const createUserLimiter = createRateLimiter({
+  keyPrefix: "create-user",
+  maxAttempts: 10,
+  windowSeconds: 3600,
+});
 
 // Admin creates an account for an existing employee
 export const createUserAccount = async (req, res) => {
@@ -18,6 +39,18 @@ export const createUserAccount = async (req, res) => {
     if (!employeeId || !email || !password || !role) {
       return res.status(400).json({
         message: "employeeId, email, password and role are required",
+      });
+    }
+
+    // Rate limit by authenticated admin.
+    const allowed = await createUserLimiter.check(
+      req.user._id.toString()
+    );
+
+    if (!allowed) {
+      return res.status(429).json({
+        message:
+          "Too many user accounts created. Please try again later.",
       });
     }
 
@@ -48,6 +81,11 @@ export const createUserAccount = async (req, res) => {
       role,
     });
 
+    // Record only after the database write succeeds.
+    await createUserLimiter.record(
+      req.user._id.toString()
+    );
+
     res.status(201).json({
       message: "User account created successfully",
       user: {
@@ -69,24 +107,49 @@ export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    if (!email || !password) {
+      return res.status(400).json({
+        message: "Email and password are required",
+      });
+    }
+
+    const normalizedEmail = email.toLowerCase();
+    const ip = req.ip;
+
+    // Check both limits without incrementing either counter.
+    const [ipAllowed, emailAllowed] = await Promise.all([
+      loginIpLimiter.check(ip),
+      loginEmailLimiter.check(normalizedEmail),
+    ]);
+
+    if (!ipAllowed || !emailAllowed) {
+      return res.status(429).json({
+        message:
+          "Too many login attempts. Please try again later.",
+      });
+    }
+
     const user = await User.findOne({
-      email: email.toLowerCase(),
+      email: normalizedEmail,
     });
 
-    if (!user) {
+    const isMatch =
+      user &&
+      (await bcrypt.compare(password, user.passwordHash));
+
+    if (!user || !isMatch) {
+      // Record only failed login attempts.
+      await Promise.all([
+        loginIpLimiter.record(ip),
+        loginEmailLimiter.record(normalizedEmail),
+      ]);
+
       return res.status(401).json({
         message: "Invalid email or password",
       });
     }
 
-    const isMatch = await bcrypt.compare(password, user.passwordHash);
-
-    if (!isMatch) {
-      return res.status(401).json({
-        message: "Invalid email or password",
-      });
-    }
-
+    // Successful login does not increment either counter.
     const token = generateToken(user._id);
 
     res.json({
