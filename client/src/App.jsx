@@ -4,7 +4,7 @@ import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import RoleRoute from "./components/RoleRoute.jsx";
 import Login from "./pages/Login.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
-
+import LeaveRequests from "./pages/LeaveRequests.jsx";
 function Profile() {
   return <h1>Profile</h1>;
 }
@@ -33,11 +33,12 @@ export default function App() {
       <Route path="/not-authorized" element={<NotAuthorized />} />
 
       {/* Any authenticated user */}
-      <Route element={<ProtectedRoute />}>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/profile" element={<Profile />} />
-        <Route path="/attendance" element={<Attendance />} />
-      </Route>
+<Route element={<ProtectedRoute />}>
+  <Route path="/" element={<Dashboard />} />
+  <Route path="/profile" element={<Profile />} />
+  <Route path="/attendance" element={<Attendance />} />
+  <Route path="/leave-requests" element={<LeaveRequests />} />
+</Route>
 
       {/* Admin or Manager */}
       <Route
