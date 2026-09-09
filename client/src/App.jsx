@@ -6,7 +6,7 @@ import Login from "./pages/Login.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import LeaveRequests from "./pages/LeaveRequests.jsx";
 import TeamLeaveRequests from "./pages/TeamLeaveRequests.jsx";
-
+import AdminEmployees from "./pages/AdminEmployees.jsx";
 function Profile() {
   return <h1>Profile</h1>;
 }
@@ -54,11 +54,15 @@ export default function App() {
       </Route>
 
       {/* Admin only */}
-      <Route
-        element={<RoleRoute allowedRoles={["admin"]} />}
-      >
-        <Route path="/admin" element={<AdminDashboard />} />
-      </Route>
+<Route
+  element={<RoleRoute allowedRoles={["admin"]} />}
+>
+  <Route path="/admin" element={<AdminDashboard />} />
+  <Route
+    path="/admin/employees"
+    element={<AdminEmployees />}
+  />
+</Route>
     </Routes>
   );
 }
