@@ -7,6 +7,9 @@ import Dashboard from "./pages/Dashboard.jsx";
 import LeaveRequests from "./pages/LeaveRequests.jsx";
 import TeamLeaveRequests from "./pages/TeamLeaveRequests.jsx";
 import AdminEmployees from "./pages/AdminEmployees.jsx";
+import AdminLeaveRequests from "./pages/AdminLeaveRequests.jsx";
+import AttendanceOversight from "./pages/AttendanceOversight.jsx";
+
 function Profile() {
   return <h1>Profile</h1>;
 }
@@ -53,6 +56,18 @@ export default function App() {
         />
       </Route>
 
+      {/* Manager or Admin */}
+<Route
+  element={
+    <RoleRoute allowedRoles={["manager", "admin"]} />
+  }
+>
+  <Route
+    path="/attendance/oversight"
+    element={<AttendanceOversight />}
+  />
+</Route>
+
       {/* Admin only */}
 <Route
   element={<RoleRoute allowedRoles={["admin"]} />}
@@ -61,6 +76,10 @@ export default function App() {
   <Route
     path="/admin/employees"
     element={<AdminEmployees />}
+  />
+  <Route
+    path="/admin/leave-requests"
+    element={<AdminLeaveRequests />}
   />
 </Route>
     </Routes>

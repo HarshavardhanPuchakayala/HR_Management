@@ -15,10 +15,19 @@ export const getTeamLeaveRequests = async () => {
   return response.data;
 };
 
+export const getAllLeaveRequests = async (status) => {
+  const params = status ? { status } : {};
+
+  const response = await api.get("/leave-requests", {
+    params,
+  });
+
+  return response.data;
+};
+
 export const approveOrRejectLeaveRequest = async (id, status) => {
   const response = await api.put(`/leave-requests/${id}`, {
     status,
   });
-
   return response.data;
 };
