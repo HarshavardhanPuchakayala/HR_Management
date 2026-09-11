@@ -6,6 +6,7 @@ import {
   approveOrRejectLeaveRequest,
   getAllLeaveRequests,
   getTeamLeaveRequests,
+  cancelLeaveRequest
 } from "../controllers/leaveRequestsController.js";
 
 import { protect, requireRole } from "../middleware/auth.js";
@@ -40,4 +41,9 @@ router.put(
   approveOrRejectLeaveRequest
 );
 
+router.patch(
+  "/:leaveRequestId/cancel",
+  protect,
+  cancelLeaveRequest
+);
 export default router;

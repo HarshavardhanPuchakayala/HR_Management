@@ -2,12 +2,16 @@ import { Routes, Route } from "react-router-dom";
 
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import RoleRoute from "./components/RoleRoute.jsx";
+import Layout from "./components/Layout.jsx";
+
 import Login from "./pages/Login.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import LeaveRequests from "./pages/LeaveRequests.jsx";
+import LeaveBalances from "./pages/LeaveBalances.jsx";
 import TeamLeaveRequests from "./pages/TeamLeaveRequests.jsx";
 import AdminEmployees from "./pages/AdminEmployees.jsx";
 import AdminLeaveRequests from "./pages/AdminLeaveRequests.jsx";
+import AdminLeaveBalances from "./pages/AdminLeaveBalances.jsx";
 import AttendanceOversight from "./pages/AttendanceOversight.jsx";
 
 function Profile() {
@@ -33,55 +37,103 @@ function NotAuthorized() {
 export default function App() {
   return (
     <Routes>
-      {/* Public */}
-      <Route path="/login" element={<Login />} />
-      <Route path="/not-authorized" element={<NotAuthorized />} />
-
-      {/* Any authenticated user */}
-      <Route element={<ProtectedRoute />}>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/profile" element={<Profile />} />
-        <Route path="/attendance" element={<Attendance />} />
-        <Route path="/leave-requests" element={<LeaveRequests />} />
-      </Route>
-
-      {/* Manager only */}
       <Route
-        element={<RoleRoute allowedRoles={["manager"]} />}
-      >
-        <Route path="/team" element={<TeamDashboard />} />
-        <Route
-          path="/team/leave-requests"
-          element={<TeamLeaveRequests />}
-        />
+        path="/login"
+        element={<Login />}
+      />
+
+      <Route
+        path="/not-authorized"
+        element={<NotAuthorized />}
+      />
+
+      <Route element={<ProtectedRoute />}>
+        <Route element={<Layout />}>
+          <Route
+            path="/"
+            element={<Dashboard />}
+          />
+
+          <Route
+            path="/profile"
+            element={<Profile />}
+          />
+
+          <Route
+            path="/attendance"
+            element={<Attendance />}
+          />
+
+          <Route
+            path="/leave-requests"
+            element={<LeaveRequests />}
+          />
+
+          <Route
+            path="/leave-balances"
+            element={<LeaveBalances />}
+          />
+
+          <Route
+            element={
+              <RoleRoute
+                allowedRoles={["manager"]}
+              />
+            }
+          >
+            <Route
+              path="/team"
+              element={<TeamDashboard />}
+            />
+
+            <Route
+              path="/team/leave-requests"
+              element={<TeamLeaveRequests />}
+            />
+          </Route>
+
+          <Route
+            element={
+              <RoleRoute
+                allowedRoles={["manager", "admin"]}
+              />
+            }
+          >
+            <Route
+              path="/attendance/oversight"
+              element={<AttendanceOversight />}
+            />
+          </Route>
+
+          <Route
+            element={
+              <RoleRoute
+                allowedRoles={["admin"]}
+              />
+            }
+          >
+            <Route
+              path="/admin"
+              element={<AdminDashboard />}
+            />
+
+            <Route
+              path="/admin/employees"
+              element={<AdminEmployees />}
+            />
+
+            <Route
+              path="/admin/leave-requests"
+              element={<AdminLeaveRequests />}
+            />
+
+            <Route
+              path="/admin/leave-balances"
+              element={<AdminLeaveBalances />}
+            />
+          </Route>
+        </Route>
       </Route>
-
-      {/* Manager or Admin */}
-<Route
-  element={
-    <RoleRoute allowedRoles={["manager", "admin"]} />
-  }
->
-  <Route
-    path="/attendance/oversight"
-    element={<AttendanceOversight />}
-  />
-</Route>
-
-      {/* Admin only */}
-<Route
-  element={<RoleRoute allowedRoles={["admin"]} />}
->
-  <Route path="/admin" element={<AdminDashboard />} />
-  <Route
-    path="/admin/employees"
-    element={<AdminEmployees />}
-  />
-  <Route
-    path="/admin/leave-requests"
-    element={<AdminLeaveRequests />}
-  />
-</Route>
     </Routes>
   );
 }
