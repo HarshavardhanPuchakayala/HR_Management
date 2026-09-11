@@ -180,9 +180,25 @@ export const createLeaveRequest = async (req, res) => {
 
 export const getMyLeaveRequests = async (req, res) => {
   try {
-    const leaveRequests = await LeaveRequest.find({
+    const { status } = req.query;
+
+    const filter = {
       employeeId: req.user.employeeId,
-    })
+    };
+
+    if (status !== undefined) {
+      if (!VALID_STATUSES.includes(status)) {
+        return res.status(400).json({
+          message: `Invalid status. Allowed values: ${VALID_STATUSES.join(
+            ", "
+          )}`,
+        });
+      }
+
+      filter.status = status;
+    }
+
+    const leaveRequests = await LeaveRequest.find(filter)
       .populate("approvedBy", "email role")
       .sort({ createdAt: -1 });
 
