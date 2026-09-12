@@ -76,29 +76,23 @@ leaveRequestSchema.index({
  * - end before they start
  * - span multiple calendar years
  */
-leaveRequestSchema.pre("validate", function (next) {
+leaveRequestSchema.pre("validate", function () {
   if (!this.startDate || !this.endDate) {
-    return next();
+    return;
   }
 
   if (this.startDate > this.endDate) {
-    return next(
-      new Error("End date cannot be before start date")
-    );
+    throw new Error("End date cannot be before start date");
   }
 
   const startYear = this.startDate.getUTCFullYear();
   const endYear = this.endDate.getUTCFullYear();
 
   if (startYear !== endYear) {
-    return next(
-      new Error(
-        "Leave requests cannot span multiple calendar years"
-      )
+    throw new Error(
+      "Leave requests cannot span multiple calendar years"
     );
   }
-
-  next();
 });
 
 const LeaveRequest = mongoose.model(

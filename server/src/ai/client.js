@@ -90,6 +90,7 @@ const serializeTools = (tools) => {
 export const generate = async ({
   messages,
   tools = [],
+  today,
 }) => {
   if (!Array.isArray(messages) || messages.length === 0) {
     throw new Error(
@@ -97,22 +98,29 @@ export const generate = async ({
     );
   }
 
-  const serializedMessages =
-    serializeMessages(messages);
-
+  const serializedMessages = serializeMessages(messages);
   const serializedTools = serializeTools(tools);
+
+  const finalMessages = today
+    ? [
+        {
+          role: "system",
+          content: `Today's date is ${today}. Use this as the authoritative current date when interpreting relative dates such as "today", "tomorrow", "next Friday", or a month/day mentioned without a year.`,
+        },
+        ...serializedMessages,
+      ]
+    : serializedMessages;
 
   const request = {
     model,
-    messages: serializedMessages,
+    messages: finalMessages,
   };
 
   if (serializedTools.length > 0) {
     request.tools = serializedTools;
   }
 
-  const response =
-    await ai.chat.completions.create(request);
+  const response = await ai.chat.completions.create(request);
 
   const message = response.choices?.[0]?.message;
 
@@ -148,9 +156,9 @@ export const generate = async ({
       };
     });
 
-return {
-  text: message.content || "",
-  toolCalls,
-  model: response.model,
-};
+  return {
+    text: message.content || "",
+    toolCalls,
+    model: response.model,
+  };
 };

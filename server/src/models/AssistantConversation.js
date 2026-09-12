@@ -90,62 +90,46 @@ const messageSchema = new mongoose.Schema(
   { _id: true }
 );
 
-messageSchema.pre("validate", function (next) {
+messageSchema.pre("validate", function () {
   const hasToolCalls =
-    Array.isArray(this.toolCalls) &&
-    this.toolCalls.length > 0;
+    Array.isArray(this.toolCalls) && this.toolCalls.length > 0;
 
   const hasToolResults =
-    Array.isArray(this.toolResults) &&
-    this.toolResults.length > 0;
+    Array.isArray(this.toolResults) && this.toolResults.length > 0;
 
   if (this.role === "user" || this.role === "model") {
     if (hasToolCalls || hasToolResults) {
-      return next(
-        new Error(
-          `${this.role} messages cannot contain toolCalls or toolResults`
-        )
+      throw new Error(
+        `${this.role} messages cannot contain toolCalls or toolResults`
       );
     }
   }
 
   if (this.role === "functionCall") {
     if (!hasToolCalls) {
-      return next(
-        new Error(
-          "functionCall messages must contain at least one toolCall"
-        )
+      throw new Error(
+        "functionCall messages must contain at least one toolCall"
       );
     }
-
     if (hasToolResults) {
-      return next(
-        new Error(
-          "functionCall messages cannot contain toolResults"
-        )
+      throw new Error(
+        "functionCall messages cannot contain toolResults"
       );
     }
   }
 
   if (this.role === "functionResponse") {
     if (!hasToolResults) {
-      return next(
-        new Error(
-          "functionResponse messages must contain at least one toolResult"
-        )
+      throw new Error(
+        "functionResponse messages must contain at least one toolResult"
       );
     }
-
     if (hasToolCalls) {
-      return next(
-        new Error(
-          "functionResponse messages cannot contain toolCalls"
-        )
+      throw new Error(
+        "functionResponse messages cannot contain toolCalls"
       );
     }
   }
-
-  next();
 });
 
 const assistantConversationSchema = new mongoose.Schema(
