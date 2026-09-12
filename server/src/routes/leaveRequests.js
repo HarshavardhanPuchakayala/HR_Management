@@ -6,18 +6,28 @@ import {
   approveOrRejectLeaveRequest,
   getAllLeaveRequests,
   getTeamLeaveRequests,
-  cancelLeaveRequest
-} from "../controllers/leaveRequestsController.js";
+  cancelLeaveRequest,
+} from "../controllers/leaveController.js";
 
-import { protect, requireRole } from "../middleware/auth.js";
+import {
+  protect,
+  requireRole,
+} from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// Any authenticated user
-router.post("/", protect, createLeaveRequest);
-router.get("/my", protect, getMyLeaveRequests);
+router.post(
+  "/",
+  protect,
+  createLeaveRequest
+);
 
-// Manager only
+router.get(
+  "/my",
+  protect,
+  getMyLeaveRequests
+);
+
 router.get(
   "/team",
   protect,
@@ -25,7 +35,6 @@ router.get(
   getTeamLeaveRequests
 );
 
-// Admin only
 router.get(
   "/",
   protect,
@@ -33,7 +42,6 @@ router.get(
   getAllLeaveRequests
 );
 
-// Admin or manager
 router.put(
   "/:leaveRequestId",
   protect,
@@ -46,4 +54,5 @@ router.patch(
   protect,
   cancelLeaveRequest
 );
+
 export default router;

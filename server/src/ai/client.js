@@ -17,7 +17,8 @@ if (!model) {
 
 const ai = new OpenAI({
   apiKey,
-  baseURL: "https://openrouter.ai/api/v1",
+  baseURL:
+    "https://openrouter.ai/api/v1",
 });
 
 const serializeMessages = (messages) => {
@@ -39,33 +40,41 @@ const serializeMessages = (messages) => {
         case "functionCall":
           return {
             role: "assistant",
-            content: message.text || null,
-            tool_calls: (message.toolCalls || []).map(
-              (toolCall) => ({
-                id: toolCall.id,
-                type: "function",
-                function: {
-                  name: toolCall.name,
-                  arguments: JSON.stringify(
-                    toolCall.args || {}
-                  ),
-                },
-              })
-            ),
+            content:
+              message.text || null,
+            tool_calls: (
+              message.toolCalls || []
+            ).map((toolCall) => ({
+              id: toolCall.id,
+              type: "function",
+              function: {
+                name: toolCall.name,
+                arguments: JSON.stringify(
+                  toolCall.args || {}
+                ),
+              },
+            })),
           };
 
         case "functionResponse":
-          return (message.toolResults || []).map(
-            (toolResult) => ({
-              role: "tool",
-              tool_call_id: toolResult.id,
-              content: JSON.stringify(
-                toolResult.success
-                  ? { result: toolResult.result }
-                  : { error: toolResult.error }
-              ),
-            })
-          );
+          return (
+            message.toolResults || []
+          ).map((toolResult) => ({
+            role: "tool",
+            tool_call_id:
+              toolResult.id,
+            content: JSON.stringify(
+              toolResult.success
+                ? {
+                    result:
+                      toolResult.result,
+                  }
+                : {
+                    error:
+                      toolResult.error,
+                  }
+            ),
+          }));
 
         default:
           throw new Error(
@@ -92,20 +101,27 @@ export const generate = async ({
   tools = [],
   today,
 }) => {
-  if (!Array.isArray(messages) || messages.length === 0) {
+  if (
+    !Array.isArray(messages) ||
+    messages.length === 0
+  ) {
     throw new Error(
       "At least one assistant message is required"
     );
   }
 
-  const serializedMessages = serializeMessages(messages);
-  const serializedTools = serializeTools(tools);
+  const serializedMessages =
+    serializeMessages(messages);
+
+  const serializedTools =
+    serializeTools(tools);
 
   const finalMessages = today
     ? [
         {
           role: "system",
-          content: `Today's date is ${today}. Use this as the authoritative current date when interpreting relative dates such as "today", "tomorrow", "next Friday", or a month/day mentioned without a year.`,
+          content:
+            `Today's date is ${today}. Use this as the authoritative current date when interpreting relative dates such as "today", "tomorrow", "next Friday", or a month/day mentioned without a year.`,
         },
         ...serializedMessages,
       ]
@@ -120,9 +136,13 @@ export const generate = async ({
     request.tools = serializedTools;
   }
 
-  const response = await ai.chat.completions.create(request);
+  const response =
+    await ai.chat.completions.create(
+      request
+    );
 
-  const message = response.choices?.[0]?.message;
+  const message =
+    response.choices?.[0]?.message;
 
   if (!message) {
     throw new Error(
@@ -130,22 +150,37 @@ export const generate = async ({
     );
   }
 
-  const toolCalls = (message.tool_calls || [])
+  const toolCalls = (
+    message.tool_calls || []
+  )
     .filter(
       (toolCall) =>
         toolCall.type === "function" &&
-        toolCall.function
+        toolCall.function &&
+        typeof toolCall.function.name ===
+          "string"
     )
     .map((toolCall) => {
       let args = {};
 
       try {
         args = JSON.parse(
-          toolCall.function.arguments || "{}"
+          toolCall.function.arguments ||
+            "{}"
         );
       } catch {
         throw new Error(
           `Invalid JSON arguments returned for tool ${toolCall.function.name}`
+        );
+      }
+
+      if (
+        !args ||
+        typeof args !== "object" ||
+        Array.isArray(args)
+      ) {
+        throw new Error(
+          `Invalid arguments returned for tool ${toolCall.function.name}`
         );
       }
 
@@ -157,7 +192,11 @@ export const generate = async ({
     });
 
   return {
-    text: message.content || "",
+    text:
+      typeof message.content ===
+      "string"
+        ? message.content
+        : "",
     toolCalls,
     model: response.model,
   };

@@ -1,17 +1,42 @@
-
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
+
 import User from "../models/User.js";
 import Employee from "../models/Employee.js";
 import { createRateLimiter } from "../middleware/rateLimit.js";
+import { createAuditLog } from "../utils/auditLog.js";
+
+const ROLES = [
+  "admin",
+  "manager",
+  "employee",
+];
 
 const generateToken = (userId) => {
-  return jwt.sign({ userId }, process.env.JWT_SECRET, {
-    expiresIn: "7d",
-  });
+  if (!process.env.JWT_SECRET) {
+    throw new Error(
+      "JWT_SECRET is not configured"
+    );
+  }
+
+  return jwt.sign(
+    { userId: userId.toString() },
+    process.env.JWT_SECRET,
+    {
+      expiresIn: "7d",
+      algorithm: "HS256",
+    }
+  );
 };
 
-// Login rate limits
+const normalizeEmail = (email) =>
+  String(email).trim().toLowerCase();
+
+const isValidEmail = (email) =>
+  email.length <= 254 &&
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
 const loginIpLimiter = createRateLimiter({
   keyPrefix: "login:ip",
   maxAttempts: 20,
@@ -24,28 +49,66 @@ const loginEmailLimiter = createRateLimiter({
   windowSeconds: 900,
 });
 
-// Admin account-creation rate limit
 const createUserLimiter = createRateLimiter({
   keyPrefix: "create-user",
   maxAttempts: 10,
   windowSeconds: 3600,
 });
 
-// Admin creates an account for an existing employee
-export const createUserAccount = async (req, res) => {
+export const createUserAccount = async (
+  req,
+  res
+) => {
   try {
-    const { employeeId, email, password, role } = req.body;
+    const {
+      employeeId,
+      email,
+      password,
+      role,
+    } = req.body;
 
-    if (!employeeId || !email || !password || !role) {
+    if (
+      !mongoose.Types.ObjectId.isValid(
+        employeeId
+      )
+    ) {
       return res.status(400).json({
-        message: "employeeId, email, password and role are required",
+        message: "Invalid employee ID",
       });
     }
 
-    // Rate limit by authenticated admin.
-    const allowed = await createUserLimiter.check(
-      req.user._id.toString()
-    );
+    if (
+      typeof email !== "string" ||
+      !isValidEmail(
+        normalizeEmail(email)
+      )
+    ) {
+      return res.status(400).json({
+        message: "Invalid email",
+      });
+    }
+
+    if (
+      typeof password !== "string" ||
+      password.length < 8 ||
+      password.length > 128
+    ) {
+      return res.status(400).json({
+        message:
+          "Password must be between 8 and 128 characters",
+      });
+    }
+
+    if (!ROLES.includes(role)) {
+      return res.status(400).json({
+        message: "Invalid role",
+      });
+    }
+
+    const allowed =
+      await createUserLimiter.check(
+        req.user._id.toString()
+      );
 
     if (!allowed) {
       return res.status(429).json({
@@ -54,7 +117,11 @@ export const createUserAccount = async (req, res) => {
       });
     }
 
-    const employee = await Employee.findById(employeeId);
+    const normalizedEmail =
+      normalizeEmail(email);
+
+    const employee =
+      await Employee.findById(employeeId);
 
     if (!employee) {
       return res.status(404).json({
@@ -62,32 +129,45 @@ export const createUserAccount = async (req, res) => {
       });
     }
 
-    const existingUser = await User.findOne({
-      $or: [{ employeeId }, { email: email.toLowerCase() }],
-    });
+    const existingUser =
+      await User.findOne({
+        $or: [
+          { employeeId },
+          { email: normalizedEmail },
+        ],
+      });
 
     if (existingUser) {
       return res.status(409).json({
-        message: "User account already exists",
+        message:
+          "User account already exists",
       });
     }
 
-    const passwordHash = await bcrypt.hash(password, 12);
+    const passwordHash =
+      await bcrypt.hash(password, 12);
 
     const user = await User.create({
       employeeId,
-      email: email.toLowerCase(),
+      email: normalizedEmail,
       passwordHash,
       role,
     });
 
-    // Record only after the database write succeeds.
     await createUserLimiter.record(
       req.user._id.toString()
     );
 
-    res.status(201).json({
-      message: "User account created successfully",
+    await createAuditLog({
+      req,
+      action: "USER_ACCOUNT_CREATED",
+      entityType: "User",
+      entityId: user._id,
+    });
+
+    return res.status(201).json({
+      message:
+        "User account created successfully",
       user: {
         id: user._id,
         employeeId: user.employeeId,
@@ -96,30 +176,72 @@ export const createUserAccount = async (req, res) => {
       },
     });
   } catch (error) {
-    res.status(500).json({
-      message: "Failed to create user account",
-      error: error.message,
+    console.error(
+      "Create user account error:",
+      error
+    );
+
+    if (error.code === 11000) {
+      return res.status(409).json({
+        message:
+          "User account already exists",
+      });
+    }
+
+    if (
+      error.name === "ValidationError"
+    ) {
+      return res.status(400).json({
+        message:
+          "Invalid user account data",
+      });
+    }
+
+    return res.status(500).json({
+      message:
+        "Failed to create user account",
     });
   }
 };
 
 export const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password } =
+      req.body;
 
-    if (!email || !password) {
+    if (
+      typeof email !== "string" ||
+      typeof password !== "string"
+    ) {
       return res.status(400).json({
-        message: "Email and password are required",
+        message:
+          "Email and password are required",
       });
     }
 
-    const normalizedEmail = email.toLowerCase();
-    const ip = req.ip;
+    const normalizedEmail =
+      normalizeEmail(email);
 
-    // Check both limits without incrementing either counter.
-    const [ipAllowed, emailAllowed] = await Promise.all([
+    if (
+      !isValidEmail(normalizedEmail) ||
+      password.length > 128
+    ) {
+      return res.status(401).json({
+        message:
+          "Invalid email or password",
+      });
+    }
+
+    const ip = req.ip || "unknown";
+
+    const [
+      ipAllowed,
+      emailAllowed,
+    ] = await Promise.all([
       loginIpLimiter.check(ip),
-      loginEmailLimiter.check(normalizedEmail),
+      loginEmailLimiter.check(
+        normalizedEmail
+      ),
     ]);
 
     if (!ipAllowed || !emailAllowed) {
@@ -129,30 +251,47 @@ export const login = async (req, res) => {
       });
     }
 
-    const user = await User.findOne({
-      email: normalizedEmail,
-    });
+    const user =
+      await User.findOne({
+        email: normalizedEmail,
+      });
 
     const isMatch =
       user &&
-      (await bcrypt.compare(password, user.passwordHash));
+      (await bcrypt.compare(
+        password,
+        user.passwordHash
+      ));
 
     if (!user || !isMatch) {
-      // Record only failed login attempts.
       await Promise.all([
         loginIpLimiter.record(ip),
-        loginEmailLimiter.record(normalizedEmail),
+        loginEmailLimiter.record(
+          normalizedEmail
+        ),
       ]);
 
       return res.status(401).json({
-        message: "Invalid email or password",
+        message:
+          "Invalid email or password",
       });
     }
 
-    // Successful login does not increment either counter.
-    const token = generateToken(user._id);
+    const token = generateToken(
+      user._id
+    );
 
-    res.json({
+    await createAuditLog({
+      req: {
+        ...req,
+        user,
+      },
+      action: "LOGIN",
+      entityType: "User",
+      entityId: user._id,
+    });
+
+    return res.json({
       token,
       user: {
         id: user._id,
@@ -162,18 +301,31 @@ export const login = async (req, res) => {
       },
     });
   } catch (error) {
-    res.status(500).json({
+    console.error(
+      "Login error:",
+      error
+    );
+
+    return res.status(500).json({
       message: "Login failed",
-      error: error.message,
     });
   }
 };
 
-export const getMe = async (req, res) => {
+export const getMe = async (
+  req,
+  res
+) => {
   try {
-    const user = await User.findById(req.user._id)
-      .select("-passwordHash")
-      .populate("employeeId");
+    const user =
+      await User.findById(req.user._id)
+        .select(
+          "_id employeeId email role createdAt updatedAt"
+        )
+        .populate(
+          "employeeId",
+          "name email phone jobTitle department managerId status"
+        );
 
     if (!user) {
       return res.status(404).json({
@@ -181,11 +333,16 @@ export const getMe = async (req, res) => {
       });
     }
 
-    res.json(user);
+    return res.json(user);
   } catch (error) {
-    res.status(500).json({
-      message: "Failed to fetch current user",
-      error: error.message,
+    console.error(
+      "Get current user error:",
+      error
+    );
+
+    return res.status(500).json({
+      message:
+        "Failed to fetch current user",
     });
   }
 };

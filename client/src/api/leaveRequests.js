@@ -1,33 +1,46 @@
 import api from "./axios.js";
 
 export const createLeaveRequest = async (data) => {
-  const response = await api.post("/leave-requests", data);
+  const response = await api.post("/leave", data);
   return response.data;
 };
 
 export const getMyLeaveRequests = async () => {
-  const response = await api.get("/leave-requests/my");
+  const response = await api.get("/leave/my");
   return response.data;
 };
 
 export const getTeamLeaveRequests = async () => {
-  const response = await api.get("/leave-requests/team");
+  const response = await api.get("/leave/team");
   return response.data;
 };
 
 export const getAllLeaveRequests = async (status) => {
   const params = status ? { status } : {};
 
-  const response = await api.get("/leave-requests", {
+  const response = await api.get("/leave", {
     params,
   });
 
   return response.data;
 };
 
-export const approveOrRejectLeaveRequest = async (id, status) => {
-  const response = await api.put(`/leave-requests/${id}`, {
-    status,
-  });
+export const approveOrRejectLeaveRequest = async (
+  id,
+  status
+) => {
+  const response = await api.put(
+    `/leave/${id}`,
+    { status }
+  );
+
+  return response.data;
+};
+
+export const cancelLeaveRequest = async (id) => {
+  const response = await api.patch(
+    `/leave/${id}/cancel`
+  );
+
   return response.data;
 };

@@ -9,141 +9,296 @@ import {
 } from "../ai/toolRegistry.js";
 
 const MAX_TOOL_ROUNDS = 1;
+const MAX_MESSAGE_LENGTH = 4000;
+const MAX_TOOL_CALLS = 10;
 
-const createConversation = async (userId) => {
-  return AssistantConversation.create({
+const createConversation = async (userId) =>
+  AssistantConversation.create({
     userId,
     title: "New conversation",
     status: "active",
     messages: [],
   });
-};
 
-const appendMessage = (conversation, message) => {
+const appendMessage = (
+  conversation,
+  message
+) => {
   conversation.messages.push(message);
 };
 
 const getTodayIsoDate = () => {
   const now = new Date();
+
   return new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+    Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate()
+    )
   )
     .toISOString()
     .slice(0, 10);
 };
 
-const buildFallbackConfirmation = (toolResults) => {
-  const summaries = toolResults.map((toolResult) => {
-    if (toolResult.success) {
-      return `${toolResult.name} completed successfully.`;
-    }
-    return `${toolResult.name} failed: ${toolResult.error}`;
-  });
+const buildFallbackConfirmation = (
+  toolResults
+) =>
+  toolResults
+    .map((toolResult) =>
+      toolResult.success
+        ? `${toolResult.name} completed successfully.`
+        : `${toolResult.name} failed.`
+    )
+    .join(" ");
 
-  return summaries.join(" ");
+const buildConversationTitle = (
+  message
+) => {
+  const trimmed = message.trim();
+
+  if (trimmed.length <= 50) {
+    return trimmed;
+  }
+
+  const cut = trimmed.slice(0, 50);
+  const lastSpace =
+    cut.lastIndexOf(" ");
+
+  return (
+    (lastSpace > 20
+      ? cut.slice(0, lastSpace)
+      : cut) + "..."
+  );
 };
 
-export const chat = async (req, res) => {
+export const chat = async (
+  req,
+  res
+) => {
   try {
     const user = req.user;
-    const userId = user._id;
 
-    const { message, conversationId } = req.body;
+    if (!user?._id) {
+      return res.status(401).json({
+        message:
+          "Authentication required",
+      });
+    }
 
-    if (typeof message !== "string" || message.trim() === "") {
+    const {
+      message,
+      conversationId,
+    } = req.body || {};
+
+    if (
+      typeof message !== "string" ||
+      message.trim() === ""
+    ) {
       return res.status(400).json({
         message: "Message is required",
       });
     }
 
-    if (conversationId !== undefined) {
-      if (
-        typeof conversationId !== "string" ||
-        !mongoose.Types.ObjectId.isValid(conversationId)
-      ) {
-        return res.status(400).json({
-          message: "Invalid conversationId",
-        });
-      }
+    const trimmedMessage =
+      message.trim();
+
+    if (
+      trimmedMessage.length >
+      MAX_MESSAGE_LENGTH
+    ) {
+      return res.status(400).json({
+        message:
+          "Message is too long",
+      });
+    }
+
+    if (
+      conversationId !== undefined &&
+      (
+        typeof conversationId !==
+          "string" ||
+        !mongoose.Types.ObjectId.isValid(
+          conversationId
+        )
+      )
+    ) {
+      return res.status(400).json({
+        message:
+          "Invalid conversationId",
+      });
     }
 
     let conversation;
 
     if (conversationId) {
-      conversation = await AssistantConversation.findOne({
-        _id: conversationId,
-        userId,
-        status: "active",
-      });
+      conversation =
+        await AssistantConversation.findOne(
+          {
+            _id: conversationId,
+            userId: user._id,
+            status: "active",
+          }
+        );
 
       if (!conversation) {
         return res.status(404).json({
-          message: "Conversation not found",
+          message:
+            "Conversation not found",
         });
       }
     } else {
-      conversation = await createConversation(userId);
+      conversation =
+        await createConversation(
+          user._id
+        );
     }
 
     appendMessage(conversation, {
       role: "user",
-      text: message.trim(),
+      text: trimmedMessage,
     });
 
-    const today = getTodayIsoDate();
+    if (
+      conversation.title ===
+      "New conversation"
+    ) {
+      conversation.title =
+        buildConversationTitle(
+          trimmedMessage
+        );
+    }
 
-    const firstGeneration = await generate({
-      messages: conversation.messages,
-      tools: toolDeclarations,
-      today,
-    });
+    const today =
+      getTodayIsoDate();
 
-    if (firstGeneration.toolCalls.length === 0) {
+    const firstGeneration =
+      await generate({
+        messages:
+          conversation.messages,
+        tools: toolDeclarations,
+        today,
+      });
+
+    if (
+      !firstGeneration ||
+      !Array.isArray(
+        firstGeneration.toolCalls
+      )
+    ) {
+      throw new Error(
+        "Invalid assistant generation response"
+      );
+    }
+
+    if (
+      firstGeneration.toolCalls
+        .length > MAX_TOOL_CALLS
+    ) {
+      return res.status(400).json({
+        message:
+          "Too many assistant actions requested",
+      });
+    }
+
+    if (
+      firstGeneration.toolCalls.length ===
+      0
+    ) {
+      const text =
+        typeof firstGeneration.text ===
+          "string"
+          ? firstGeneration.text.trim()
+          : "";
+
+      if (!text) {
+        throw new Error(
+          "Assistant returned an empty response"
+        );
+      }
+
       appendMessage(conversation, {
         role: "model",
-        text: firstGeneration.text,
+        text,
       });
 
       await conversation.save();
 
       return res.json({
-        conversationId: conversation._id,
-        message: firstGeneration.text,
+        conversationId:
+          conversation._id,
+        message: text,
         toolCalls: [],
       });
     }
 
     if (MAX_TOOL_ROUNDS !== 1) {
-      throw new Error("Invalid assistant tool round configuration");
+      throw new Error(
+        "Invalid assistant tool round configuration"
+      );
     }
 
     appendMessage(conversation, {
       role: "functionCall",
-      text: firstGeneration.text,
-      toolCalls: firstGeneration.toolCalls,
+      text:
+        typeof firstGeneration.text ===
+        "string"
+          ? firstGeneration.text
+          : "",
+      toolCalls:
+        firstGeneration.toolCalls,
     });
 
     const toolResults = [];
-    let actionSucceeded = false;
 
     for (const toolCall of firstGeneration.toolCalls) {
-      const result = await dispatchToolCall({
-        toolCall,
-        user,
-      });
+      if (
+        !toolCall ||
+        typeof toolCall.name !==
+          "string"
+      ) {
+        toolResults.push({
+          id: null,
+          name: "unknown",
+          result: null,
+          success: false,
+          error:
+            "Invalid tool call",
+        });
 
-      toolResults.push({
-        id: toolCall.id,
-        name: toolCall.name,
-        result: result.result ?? null,
-        success: result.success,
-        error: result.success
-          ? null
-          : result.error || "Tool execution failed",
-      });
+        continue;
+      }
 
-      if (toolActionMap[toolCall.name] === true && result.success) {
-        actionSucceeded = true;
+      try {
+        const result =
+          await dispatchToolCall({
+            toolCall,
+            user,
+          });
+
+        const success =
+          Boolean(result?.success);
+
+        toolResults.push({
+          id: toolCall.id || null,
+          name: toolCall.name,
+          result: success
+            ? result.result ?? null
+            : null,
+          success,
+          error: success
+            ? null
+            : "Tool execution failed",
+        });
+      } catch {
+        toolResults.push({
+          id: toolCall.id || null,
+          name: toolCall.name,
+          result: null,
+          success: false,
+          error:
+            "Tool execution failed",
+        });
       }
     }
 
@@ -152,17 +307,29 @@ export const chat = async (req, res) => {
       toolResults,
     });
 
-    if (actionSucceeded) {
-      await conversation.save();
+    const secondGeneration =
+      await generate({
+        messages:
+          conversation.messages,
+        tools: toolDeclarations,
+        today,
+      });
+
+    if (
+      !secondGeneration ||
+      !Array.isArray(
+        secondGeneration.toolCalls
+      )
+    ) {
+      throw new Error(
+        "Invalid assistant final response"
+      );
     }
 
-    const secondGeneration = await generate({
-      messages: conversation.messages,
-      tools: toolDeclarations,
-      today,
-    });
-
-    if (secondGeneration.toolCalls.length > 0) {
+    if (
+      secondGeneration.toolCalls.length >
+      0
+    ) {
       const safeFinalMessage =
         "I completed the requested action, but I couldn't complete the remaining assistant step.";
 
@@ -174,16 +341,30 @@ export const chat = async (req, res) => {
       await conversation.save();
 
       return res.json({
-        conversationId: conversation._id,
+        conversationId:
+          conversation._id,
         message: safeFinalMessage,
-        toolCalls: [],
+        toolCalls:
+          firstGeneration.toolCalls.map(
+            (toolCall) => ({
+              id: toolCall.id || null,
+              name: toolCall.name,
+            })
+          ),
       });
     }
 
+    const generatedText =
+      typeof secondGeneration.text ===
+      "string"
+        ? secondGeneration.text.trim()
+        : "";
+
     const finalText =
-      secondGeneration.text.trim() !== ""
-        ? secondGeneration.text
-        : buildFallbackConfirmation(toolResults);
+      generatedText ||
+      buildFallbackConfirmation(
+        toolResults
+      );
 
     appendMessage(conversation, {
       role: "model",
@@ -193,18 +374,26 @@ export const chat = async (req, res) => {
     await conversation.save();
 
     return res.json({
-      conversationId: conversation._id,
+      conversationId:
+        conversation._id,
       message: finalText,
-      toolCalls: firstGeneration.toolCalls.map((toolCall) => ({
-        id: toolCall.id,
-        name: toolCall.name,
-      })),
+      toolCalls:
+        firstGeneration.toolCalls.map(
+          (toolCall) => ({
+            id: toolCall.id || null,
+            name: toolCall.name,
+          })
+        ),
     });
   } catch (error) {
-    console.error("Assistant chat error:", error);
+    console.error(
+      "Assistant chat error:",
+      error.message
+    );
 
     return res.status(500).json({
-      message: "Assistant is temporarily unavailable",
+      message:
+        "Assistant is temporarily unavailable",
     });
   }
 };

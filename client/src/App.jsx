@@ -1,3 +1,4 @@
+
 import { Routes, Route } from "react-router-dom";
 
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
@@ -13,6 +14,16 @@ import AdminEmployees from "./pages/AdminEmployees.jsx";
 import AdminLeaveRequests from "./pages/AdminLeaveRequests.jsx";
 import AdminLeaveBalances from "./pages/AdminLeaveBalances.jsx";
 import AttendanceOversight from "./pages/AttendanceOversight.jsx";
+import Assistant from "./pages/Assistant.jsx";
+import PerformanceReviews from "./pages/PerformanceReviews.jsx";
+import Payroll from "./pages/Payroll.jsx";
+import Payslip from "./pages/Payslip.jsx";
+import Onboarding from "./pages/Onboarding.jsx";
+import Offboarding from "./pages/Offboarding.jsx";
+import Documents from "./pages/Documents.jsx";
+import Dashboard from "./pages/Dashboard.jsx";
+import Notifications from "./pages/Notifications.jsx";
+import AuditLogs from "./pages/AuditLogs.jsx";
 
 function Profile() {
   return <h1>Profile</h1>;
@@ -74,6 +85,16 @@ export default function App() {
             element={<LeaveBalances />}
           />
 
+          {/* Performance Reviews
+              Accessible to authenticated
+              admin, manager, and employee users.
+          */}
+          <Route
+            path="/performance-reviews"
+            element={<PerformanceReviews />}
+          />
+
+          {/* Manager routes */}
           <Route
             element={
               <RoleRoute
@@ -92,6 +113,7 @@ export default function App() {
             />
           </Route>
 
+          {/* Manager + Admin routes */}
           <Route
             element={
               <RoleRoute
@@ -105,6 +127,7 @@ export default function App() {
             />
           </Route>
 
+          {/* Admin routes */}
           <Route
             element={
               <RoleRoute
@@ -132,6 +155,79 @@ export default function App() {
               element={<AdminLeaveBalances />}
             />
           </Route>
+
+          <Route
+            path="/assistant"
+            element={<Assistant />}
+          />
+
+
+          <Route
+  path="/payroll"
+  element={
+    <ProtectedRoute>
+      <Payroll />
+    </ProtectedRoute>
+  }
+/>
+<Route
+  path="/payroll/:id/payslip"
+  element={
+    <ProtectedRoute>
+      <Payslip />
+    </ProtectedRoute>
+  }
+/>
+
+<Route
+  path="/onboarding"
+  element={
+    <ProtectedRoute>
+      <Onboarding />
+    </ProtectedRoute>
+  }
+/>
+
+<Route
+  path="/offboarding"
+  element={
+    <ProtectedRoute>
+      <Offboarding />
+    </ProtectedRoute>
+  }
+/>
+<Route
+  path="/documents"
+  element={
+    <ProtectedRoute>
+      <Documents user={user} />
+    </ProtectedRoute>
+  }
+/>
+<Route
+  path="/dashboard"
+  element={
+    <ProtectedRoute>
+      <Dashboard />
+    </ProtectedRoute>
+  }
+/>
+<Route
+  path="/notifications"
+  element={
+    <ProtectedRoute>
+      <Notifications />
+    </ProtectedRoute>
+  }
+/>
+<Route
+  path="/audit-logs"
+  element={
+    <ProtectedRoute>
+      <AuditLogs />
+    </ProtectedRoute>
+  }
+/>
         </Route>
       </Route>
     </Routes>

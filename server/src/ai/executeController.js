@@ -17,12 +17,11 @@ const createResponseCapture = () => {
         code > 599
       ) {
         throw new Error(
-          `Invalid HTTP status code: ${code}`
+          "Invalid HTTP status code"
         );
       }
 
       statusCode = code;
-
       return res;
     },
 
@@ -84,19 +83,24 @@ export const executeController = async (
   } catch (error) {
     return {
       success: false,
-      error: error.message || "Controller execution failed",
+      error:
+        error.message ||
+        "Controller execution failed",
     };
   }
 
   if (!res.hasResponded()) {
     return {
       success: false,
-      error: "Controller completed without sending a response",
+      error:
+        "Controller completed without sending a response",
     };
   }
 
-  const statusCode = res.getStatusCode();
-  const responseBody = res.getBody();
+  const statusCode =
+    res.getStatusCode();
+  const responseBody =
+    res.getBody();
 
   if (statusCode < 400) {
     return {

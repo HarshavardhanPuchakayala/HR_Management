@@ -9,16 +9,31 @@ import {
   getDirectReports,
 } from "../controllers/employeeController.js";
 
-import { protect, requireRole } from "../middleware/auth.js";
+import {
+  protect,
+  requireRole,
+} from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// Any authenticated user
-router.get("/", protect, getEmployees);
-router.get("/:employeeId", protect, getEmployee);
-router.get("/:employeeId/direct-reports", protect, getDirectReports);
+router.get(
+  "/",
+  protect,
+  getEmployees
+);
 
-// Admin only
+router.get(
+  "/:employeeId",
+  protect,
+  getEmployee
+);
+
+router.get(
+  "/:employeeId/direct-reports",
+  protect,
+  getDirectReports
+);
+
 router.post(
   "/",
   protect,

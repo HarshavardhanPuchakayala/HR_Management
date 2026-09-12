@@ -3,9 +3,29 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const redis = new Redis(process.env.REDIS_URL);
+if (!process.env.REDIS_URL) {
+  throw new Error(
+    "REDIS_URL is not configured"
+  );
+}
 
-redis.on("connect", ()=> console.log("Redis connected"));
-redis.on("error", (err)=> console.log("Redis error", err));
+const redis = new Redis(
+  process.env.REDIS_URL,
+  {
+    maxRetriesPerRequest: 3,
+    enableReadyCheck: true,
+  }
+);
+
+redis.on("connect", () => {
+  console.log("Redis connected");
+});
+
+redis.on("error", (error) => {
+  console.error(
+    "Redis error:",
+    error.message
+  );
+});
 
 export default redis;

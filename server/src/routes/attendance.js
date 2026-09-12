@@ -8,16 +8,31 @@ import {
   getAllAttendance,
 } from "../controllers/attendanceController.js";
 
-import { protect, requireRole } from "../middleware/auth.js";
+import {
+  protect,
+  requireRole,
+} from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// Any authenticated employee
-router.post("/check-in", protect, checkIn);
-router.post("/check-out", protect, checkOut);
-router.get("/my", protect, getMyAttendance);
+router.post(
+  "/check-in",
+  protect,
+  checkIn
+);
 
-// Admin or manager
+router.post(
+  "/check-out",
+  protect,
+  checkOut
+);
+
+router.get(
+  "/my",
+  protect,
+  getMyAttendance
+);
+
 router.get(
   "/employee/:employeeId",
   protect,
@@ -25,7 +40,6 @@ router.get(
   getEmployeeAttendance
 );
 
-// Admin only
 router.get(
   "/",
   protect,

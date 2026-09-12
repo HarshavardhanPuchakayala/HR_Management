@@ -1,3 +1,5 @@
+import mongoose from "mongoose";
+
 import Employee from "../models/Employee.js";
 import { createRateLimiter } from "../middleware/rateLimit.js";
 import {
@@ -5,11 +7,13 @@ import {
   setCachedDirectory,
   invalidateDirectoryCache,
 } from "../utils/employeeCache.js";
+import { createAuditLog } from "../utils/auditLog.js";
+
+const isValidObjectId = (value) =>
+  mongoose.Types.ObjectId.isValid(value);
 
 const wouldCreateCycle = async (employeeId, managerId) => {
-  if (employeeId.toString() === managerId.toString()) {
-    return true;
-  }
+  if (employeeId.toString() === managerId.toString()) return true;
 
   const visited = new Set();
   let currentId = managerId;
@@ -17,35 +21,28 @@ const wouldCreateCycle = async (employeeId, managerId) => {
   while (currentId) {
     const currentIdString = currentId.toString();
 
-    // Protect against an already-corrupted hierarchy.
-    if (visited.has(currentIdString)) {
-      return true;
-    }
+    if (visited.has(currentIdString)) return true;
 
     visited.add(currentIdString);
 
-    // Proposed manager eventually reports to the employee being updated.
-    if (currentIdString === employeeId.toString()) {
-      return true;
-    }
+    if (currentIdString === employeeId.toString()) return true;
 
-    const manager = await Employee.findById(currentId).select("managerId");
+    const manager = await Employee.findById(currentId)
+      .select("managerId");
 
-    if (!manager) {
-      return false;
-    }
+    if (!manager) return false;
 
     currentId = manager.managerId;
   }
 
   return false;
 };
+
 const createEmployeeLimiter = createRateLimiter({
   keyPrefix: "create-employee",
   maxAttempts: 30,
   windowSeconds: 3600,
 });
-
 
 export const createEmployee = async (req, res) => {
   try {
@@ -60,17 +57,38 @@ export const createEmployee = async (req, res) => {
 
     if (!name || !email || !jobTitle || !department) {
       return res.status(400).json({
-        message: "name, email, jobTitle and department are required",
+        message:
+          "name, email, jobTitle and department are required",
+      });
+    }
+
+    if (
+      managerId !== undefined &&
+      managerId !== null &&
+      !isValidObjectId(managerId)
+    ) {
+      return res.status(400).json({
+        message: "Invalid manager ID",
+      });
+    }
+
+    const normalizedEmail = String(email)
+      .trim()
+      .toLowerCase();
+
+    if (!normalizedEmail || normalizedEmail.length > 254) {
+      return res.status(400).json({
+        message: "Invalid email",
       });
     }
 
     const adminId = req.user._id.toString();
-
     const allowed = await createEmployeeLimiter.check(adminId);
 
     if (!allowed) {
       return res.status(429).json({
-        message: "Too many employee creation attempts. Please try again later.",
+        message:
+          "Too many employee creation attempts. Please try again later.",
       });
     }
 
@@ -85,7 +103,7 @@ export const createEmployee = async (req, res) => {
     }
 
     const existingEmployee = await Employee.findOne({
-      email: email.toLowerCase(),
+      email: normalizedEmail,
     });
 
     if (existingEmployee) {
@@ -95,24 +113,43 @@ export const createEmployee = async (req, res) => {
     }
 
     const employee = await Employee.create({
-      name,
-      email: email.toLowerCase(),
+      name: String(name).trim(),
+      email: normalizedEmail,
       phone,
-      jobTitle,
-      department,
+      jobTitle: String(jobTitle).trim(),
+      department: String(department).trim(),
       managerId: managerId || null,
       status: "active",
     });
 
     await createEmployeeLimiter.record(adminId);
-
     await invalidateDirectoryCache();
 
-    res.status(201).json(employee);
+    await createAuditLog({
+      req,
+      action: "CREATE",
+      entityType: "Employee",
+      entityId: employee._id,
+    });
+
+    return res.status(201).json(employee);
   } catch (error) {
-    res.status(500).json({
+    console.error("Create employee error:", error);
+
+    if (error.name === "ValidationError") {
+      return res.status(400).json({
+        message: "Invalid employee data",
+      });
+    }
+
+    if (error.code === 11000) {
+      return res.status(409).json({
+        message: "Employee with this email already exists",
+      });
+    }
+
+    return res.status(500).json({
       message: "Failed to create employee",
-      error: error.message,
     });
   }
 };
@@ -120,7 +157,24 @@ export const createEmployee = async (req, res) => {
 export const updateEmployee = async (req, res) => {
   try {
     const { employeeId } = req.params;
+
+    if (!isValidObjectId(employeeId)) {
+      return res.status(400).json({
+        message: "Invalid employee ID",
+      });
+    }
+
     const { managerId } = req.body;
+
+    if (
+      managerId !== undefined &&
+      managerId !== null &&
+      !isValidObjectId(managerId)
+    ) {
+      return res.status(400).json({
+        message: "Invalid manager ID",
+      });
+    }
 
     const employee = await Employee.findById(employeeId);
 
@@ -147,9 +201,19 @@ export const updateEmployee = async (req, res) => {
       }
     }
 
-    if (req.body.email) {
+    if (req.body.email !== undefined) {
+      const normalizedEmail = String(req.body.email)
+        .trim()
+        .toLowerCase();
+
+      if (!normalizedEmail || normalizedEmail.length > 254) {
+        return res.status(400).json({
+          message: "Invalid email",
+        });
+      }
+
       const existingEmployee = await Employee.findOne({
-        email: req.body.email.toLowerCase(),
+        email: normalizedEmail,
         _id: { $ne: employeeId },
       });
 
@@ -158,9 +222,10 @@ export const updateEmployee = async (req, res) => {
           message: "Employee with this email already exists",
         });
       }
+
+      req.body.email = normalizedEmail;
     }
 
-    // Only allow fields that are safe to update through PUT.
     const allowedFields = [
       "name",
       "email",
@@ -180,15 +245,33 @@ export const updateEmployee = async (req, res) => {
     }
 
     await employee.save();
-
-    // MongoDB write succeeded, so now invalidate the cache.
     await invalidateDirectoryCache();
 
-    res.json(employee);
+    await createAuditLog({
+      req,
+      action: "UPDATE",
+      entityType: "Employee",
+      entityId: employee._id,
+    });
+
+    return res.json(employee);
   } catch (error) {
-    res.status(500).json({
+    console.error("Update employee error:", error);
+
+    if (error.name === "ValidationError") {
+      return res.status(400).json({
+        message: "Invalid employee data",
+      });
+    }
+
+    if (error.code === 11000) {
+      return res.status(409).json({
+        message: "Employee with this email already exists",
+      });
+    }
+
+    return res.status(500).json({
       message: "Failed to update employee",
-      error: error.message,
     });
   }
 };
@@ -196,6 +279,12 @@ export const updateEmployee = async (req, res) => {
 export const deleteEmployee = async (req, res) => {
   try {
     const { employeeId } = req.params;
+
+    if (!isValidObjectId(employeeId)) {
+      return res.status(400).json({
+        message: "Invalid employee ID",
+      });
+    }
 
     const employee = await Employee.findById(employeeId);
 
@@ -208,18 +297,24 @@ export const deleteEmployee = async (req, res) => {
     employee.status = "inactive";
 
     await employee.save();
-
-    // MongoDB write succeeded, so now invalidate the cache.
     await invalidateDirectoryCache();
 
-    res.json({
+    await createAuditLog({
+      req,
+      action: "DEACTIVATE",
+      entityType: "Employee",
+      entityId: employee._id,
+    });
+
+    return res.json({
       message: "Employee deactivated successfully",
       employee,
     });
   } catch (error) {
-    res.status(500).json({
+    console.error("Deactivate employee error:", error);
+
+    return res.status(500).json({
       message: "Failed to deactivate employee",
-      error: error.message,
     });
   }
 };
@@ -240,7 +335,6 @@ export const getEmployees = async (req, res) => {
       await setCachedDirectory(employees);
     }
 
-    // Apply department filter to either cached or fresh data.
     const filtered = req.query.department
       ? employees.filter(
           (employee) =>
@@ -248,19 +342,31 @@ export const getEmployees = async (req, res) => {
         )
       : employees;
 
-    res.json(filtered);
+    return res.json(filtered);
   } catch (error) {
-    res.status(500).json({
+    console.error("Get employees error:", error);
+
+    return res.status(500).json({
       message: "Failed to fetch employees",
-      error: error.message,
     });
   }
 };
 
 export const getEmployee = async (req, res) => {
   try {
-    const employee = await Employee.findById(req.params.employeeId)
-      .populate("managerId", "name email jobTitle department");
+    const { employeeId } = req.params;
+
+    if (!isValidObjectId(employeeId)) {
+      return res.status(400).json({
+        message: "Invalid employee ID",
+      });
+    }
+
+    const employee = await Employee.findById(employeeId)
+      .populate(
+        "managerId",
+        "name email jobTitle department"
+      );
 
     if (!employee) {
       return res.status(404).json({
@@ -268,11 +374,12 @@ export const getEmployee = async (req, res) => {
       });
     }
 
-    res.json(employee);
+    return res.json(employee);
   } catch (error) {
-    res.status(500).json({
+    console.error("Get employee error:", error);
+
+    return res.status(500).json({
       message: "Failed to fetch employee",
-      error: error.message,
     });
   }
 };
@@ -280,6 +387,12 @@ export const getEmployee = async (req, res) => {
 export const getDirectReports = async (req, res) => {
   try {
     const { employeeId } = req.params;
+
+    if (!isValidObjectId(employeeId)) {
+      return res.status(400).json({
+        message: "Invalid employee ID",
+      });
+    }
 
     const employee = await Employee.findById(employeeId);
 
@@ -293,11 +406,12 @@ export const getDirectReports = async (req, res) => {
       managerId: employeeId,
     }).sort({ name: 1 });
 
-    res.json(reports);
+    return res.json(reports);
   } catch (error) {
-    res.status(500).json({
+    console.error("Get direct reports error:", error);
+
+    return res.status(500).json({
       message: "Failed to fetch direct reports",
-      error: error.message,
     });
   }
 };

@@ -31,22 +31,29 @@ const toolEntries = [
   },
 ];
 
-export const toolDeclarations = toolEntries.map(
-  ({ declaration }) => declaration
-);
+export const toolDeclarations =
+  toolEntries.map(
+    ({ declaration }) => declaration
+  );
 
-export const toolRegistry = Object.fromEntries(
-  toolEntries.map(({ declaration, execute }) => [
-    declaration.name,
-    execute,
-  ])
-);
+export const toolRegistry =
+  Object.fromEntries(
+    toolEntries.map(
+      ({ declaration, execute }) => [
+        declaration.name,
+        execute,
+      ]
+    )
+  );
 
-export const toolActionMap = Object.fromEntries(
-  toolEntries.map(({ declaration, isAction }) => [
-    declaration.name,
-    isAction,
-  ])
-);
+export const toolActionMap =
+  Object.fromEntries(
+    toolEntries.map(
+      ({ declaration, isAction }) => [
+        declaration.name,
+        isAction,
+      ]
+    )
+  );
 
 export default toolRegistry;

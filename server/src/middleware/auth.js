@@ -1,47 +1,115 @@
 import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
 import User from "../models/User.js";
 
-export const protect = async (req, res, next) => {
+export const protect = async (
+  req,
+  res,
+  next
+) => {
   try {
-    const authHeader = req.headers.authorization;
+    const authHeader =
+      req.headers.authorization;
 
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    if (
+      !authHeader ||
+      !authHeader.startsWith("Bearer ")
+    ) {
       return res.status(401).json({
-        message: "Authentication required",
+        message:
+          "Authentication required",
       });
     }
 
-    const token = authHeader.split(" ")[1];
+    const token =
+      authHeader.slice(7).trim();
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (
+      !token ||
+      token.length > 4096
+    ) {
+      return res.status(401).json({
+        message:
+          "Authentication required",
+      });
+    }
 
-    const user = await User.findById(decoded.userId).select("-passwordHash");
+    if (!process.env.JWT_SECRET) {
+      return res.status(500).json({
+        message:
+          "Server authentication configuration error",
+      });
+    }
+
+    const decoded = jwt.verify(
+      token,
+      process.env.JWT_SECRET,
+      {
+        algorithms: ["HS256"],
+      }
+    );
+
+    if (
+      !decoded ||
+      typeof decoded !== "object" ||
+      !decoded.userId ||
+      !mongoose.Types.ObjectId.isValid(
+        decoded.userId
+      )
+    ) {
+      return res.status(401).json({
+        message:
+          "Authentication required",
+      });
+    }
+
+    const user =
+      await User.findById(
+        decoded.userId
+      )
+        .select(
+          "_id employeeId email role"
+        )
+        .lean();
 
     if (!user) {
       return res.status(401).json({
-        message: "User no longer exists",
+        message:
+          "Authentication required",
       });
     }
 
     req.user = user;
 
-    next();
-  } catch (error) {
+    return next();
+  } catch {
     return res.status(401).json({
-      message: "Invalid or expired token",
+      message:
+        "Authentication required",
     });
   }
 };
 
-export const requireRole = (...allowedRoles) => {
-  return (req, res, next) => {
-    if (!req.user || !allowedRoles.includes(req.user.role)) {
-      return res.status(403).json({
-        message: "Insufficient permissions",
+export const requireRole =
+  (...allowedRoles) =>
+  (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({
+        message:
+          "Authentication required",
       });
     }
 
-    next();
-  };
-};
+    if (
+      !allowedRoles.includes(
+        req.user.role
+      )
+    ) {
+      return res.status(403).json({
+        message:
+          "Insufficient permissions",
+      });
+    }
 
+    return next();
+  };

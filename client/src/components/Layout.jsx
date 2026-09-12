@@ -1,3 +1,4 @@
+
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 
@@ -11,21 +12,63 @@ const Layout = () => {
 
         <nav>
           <NavLink to="/">Dashboard</NavLink>{" "}
+
           <NavLink to="/profile">Profile</NavLink>{" "}
-          <NavLink to="/attendance">Attendance</NavLink>{" "}
+
+          <NavLink to="/attendance">
+            Attendance
+          </NavLink>{" "}
+
           <NavLink to="/leave-requests">
             Leave Requests
           </NavLink>{" "}
+
           <NavLink to="/leave-balances">
             Leave Balances
+          </NavLink>{" "}
+            <NavLink to="/payroll">
+              Payroll
+            </NavLink>
+          <NavLink to="/performance-reviews">
+            Performance Reviews
           </NavLink>
+          
+          {["admin", "manager"].includes(user?.role) && (
+  <>
+    <NavLink to="/onboarding">
+      Onboarding
+    </NavLink>
 
+    <NavLink to="/offboarding">
+      Offboarding
+    </NavLink>
+  </>
+)}
+<NavLink to="/documents">
+  Documents
+</NavLink>
+{["admin", "manager"].includes(user?.role) && (
+  <NavLink to="/dashboard">
+    Dashboard
+  </NavLink>
+)}
+<NavLink to="/notifications">
+  Notifications
+</NavLink>
+
+{user?.role === "admin" && (
+  <NavLink to="/audit-logs">
+    Audit Logs
+  </NavLink>
+)}
           {user?.role === "manager" && (
             <>
               {" "}
+
               <NavLink to="/team">
                 Team
               </NavLink>{" "}
+
               <NavLink to="/team/leave-requests">
                 Team Leave
               </NavLink>
@@ -36,6 +79,7 @@ const Layout = () => {
             user?.role === "admin") && (
             <>
               {" "}
+
               <NavLink to="/attendance/oversight">
                 Attendance Oversight
               </NavLink>
@@ -45,15 +89,19 @@ const Layout = () => {
           {user?.role === "admin" && (
             <>
               {" "}
+
               <NavLink to="/admin">
                 Admin
               </NavLink>{" "}
+
               <NavLink to="/admin/employees">
                 Employees
               </NavLink>{" "}
+
               <NavLink to="/admin/leave-requests">
                 Leave Requests
               </NavLink>{" "}
+
               <NavLink to="/admin/leave-balances">
                 Leave Balances
               </NavLink>
@@ -61,7 +109,11 @@ const Layout = () => {
           )}
 
           {" "}
-          <button type="button" onClick={logout}>
+
+          <button
+            type="button"
+            onClick={logout}
+          >
             Logout
           </button>
         </nav>

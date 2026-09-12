@@ -1,16 +1,23 @@
 import express from "express";
-import { createUserAccount,
-  login,
-  getMe} from "../controllers/authController.js";
 
-import { protect,requireRole } from "../middleware/auth.js";
+import {
+  createUserAccount,
+  login,
+  getMe,
+} from "../controllers/authController.js";
+
+import {
+  protect,
+  requireRole,
+} from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// Public
-router.post("/login", login);
+router.post(
+  "/login",
+  login
+);
 
-// Admin only
 router.post(
   "/users",
   protect,
@@ -18,7 +25,10 @@ router.post(
   createUserAccount
 );
 
-
-router.get("/me", protect, getMe);
+router.get(
+  "/me",
+  protect,
+  getMe
+);
 
 export default router;

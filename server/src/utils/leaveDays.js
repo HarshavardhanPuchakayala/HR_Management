@@ -14,23 +14,40 @@ const normalizeUtcDate = (value) => {
   );
 };
 
-export const calculateLeaveDays = (startDate, endDate) => {
-  const start = normalizeUtcDate(startDate);
-  const end = normalizeUtcDate(endDate);
+export const calculateLeaveDays = (
+  startDate,
+  endDate
+) => {
+  const start = normalizeUtcDate(
+    startDate
+  );
+  const end = normalizeUtcDate(
+    endDate
+  );
 
   if (end < start) {
-    throw new Error("End date cannot be before start date");
+    throw new Error(
+      "End date cannot be before start date"
+    );
   }
 
-  const millisecondsPerDay = 24 * 60 * 60 * 1000;
+  const millisecondsPerDay =
+    24 * 60 * 60 * 1000;
 
-  return Math.floor(
-    (end.getTime() - start.getTime()) / millisecondsPerDay
-  ) + 1;
+  return (
+    Math.floor(
+      (end.getTime() - start.getTime()) /
+        millisecondsPerDay
+    ) + 1
+  );
 };
 
-export const getLeaveCycleYear = (startDate) => {
-  return normalizeUtcDate(startDate).getUTCFullYear();
+export const getLeaveCycleYear = (
+  startDate
+) => {
+  return normalizeUtcDate(
+    startDate
+  ).getUTCFullYear();
 };
 
 export default calculateLeaveDays;

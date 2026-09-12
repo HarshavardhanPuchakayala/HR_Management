@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
-
 import LeaveBalance from "../models/LeaveBalance.js";
 import Employee from "../models/Employee.js";
+import { createAuditLog } from "../utils/auditLog.js";
 
 const LEAVE_TYPES = [
   "sick",
@@ -10,16 +10,28 @@ const LEAVE_TYPES = [
   "other",
 ];
 
-const getCurrentYear = () => new Date().getUTCFullYear();
+const isValidObjectId = (value) =>
+  mongoose.Types.ObjectId.isValid(value);
+
+const getCurrentYear = () =>
+  new Date().getUTCFullYear();
 
 const parseYear = (value) => {
-  if (value === undefined || value === null || value === "") {
+  if (
+    value === undefined ||
+    value === null ||
+    value === ""
+  ) {
     return getCurrentYear();
   }
 
   const year = Number(value);
 
-  if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+  if (
+    !Number.isInteger(year) ||
+    year < 2000 ||
+    year > 2100
+  ) {
     return null;
   }
 
@@ -27,9 +39,20 @@ const parseYear = (value) => {
 };
 
 const parseNonNegativeNumber = (value) => {
+  if (
+    value === null ||
+    value === undefined ||
+    value === ""
+  ) {
+    return null;
+  }
+
   const number = Number(value);
 
-  if (!Number.isFinite(number) || number < 0) {
+  if (
+    !Number.isFinite(number) ||
+    number < 0
+  ) {
     return null;
   }
 
@@ -63,17 +86,31 @@ export const getMyLeaveBalances = async (req, res) => {
   }
 };
 
-export const getEmployeeLeaveBalances = async (req, res) => {
+export const getEmployeeLeaveBalances = async (
+  req,
+  res
+) => {
   try {
     const { employeeId } = req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(employeeId)) {
+    if (!isValidObjectId(employeeId)) {
       return res.status(400).json({
         message: "Invalid employee ID",
       });
     }
 
-    const employee = await Employee.findById(employeeId);
+    if (
+      !["admin", "manager"].includes(
+        req.user.role
+      )
+    ) {
+      return res.status(403).json({
+        message: "Insufficient permissions",
+      });
+    }
+
+    const employee =
+      await Employee.findById(employeeId);
 
     if (!employee) {
       return res.status(404).json({
@@ -82,16 +119,18 @@ export const getEmployeeLeaveBalances = async (req, res) => {
     }
 
     if (req.user.role === "manager") {
-      const managerEmployee = await Employee.findById(
-        req.user.employeeId
-      );
+      const managerEmployee =
+        await Employee.findById(
+          req.user.employeeId
+        );
 
       if (
         !managerEmployee ||
         managerEmployee.status !== "active"
       ) {
         return res.status(403).json({
-          message: "Manager employee record not found or inactive",
+          message:
+            "Manager employee record not found or inactive",
         });
       }
 
@@ -128,26 +167,38 @@ export const getEmployeeLeaveBalances = async (req, res) => {
     );
 
     return res.status(500).json({
-      message: "Failed to fetch employee leave balances",
+      message:
+        "Failed to fetch employee leave balances",
     });
   }
 };
 
-export const initializeLeaveBalances = async (req, res) => {
+export const initializeLeaveBalances = async (
+  req,
+  res
+) => {
   try {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({
+        message:
+          "Only administrators can manage leave balances",
+      });
+    }
+
     const {
       employeeId,
       cycleYear,
       balances,
     } = req.body;
 
-    if (!mongoose.Types.ObjectId.isValid(employeeId)) {
+    if (!isValidObjectId(employeeId)) {
       return res.status(400).json({
         message: "Invalid employee ID",
       });
     }
 
-    const employee = await Employee.findById(employeeId);
+    const employee =
+      await Employee.findById(employeeId);
 
     if (!employee) {
       return res.status(404).json({
@@ -155,9 +206,18 @@ export const initializeLeaveBalances = async (req, res) => {
       });
     }
 
-    if (!Array.isArray(balances) || balances.length === 0) {
+    if (
+      !Array.isArray(balances) ||
+      balances.length === 0
+    ) {
       return res.status(400).json({
         message: "Balances are required",
+      });
+    }
+
+    if (balances.length > LEAVE_TYPES.length) {
+      return res.status(400).json({
+        message: "Too many leave balance entries",
       });
     }
 
@@ -169,18 +229,14 @@ export const initializeLeaveBalances = async (req, res) => {
       });
     }
 
-    /*
-     * Prevent duplicate leave types in the same request.
-     *
-     * Without this, two operations for "vacation", for example,
-     * could be sent to bulkWrite and produce ambiguous results.
-     */
     const seenLeaveTypes = new Set();
-
     const operations = [];
 
     for (const balance of balances) {
-      if (!balance || !LEAVE_TYPES.includes(balance.leaveType)) {
+      if (
+        !balance ||
+        !LEAVE_TYPES.includes(balance.leaveType)
+      ) {
         return res.status(400).json({
           message: `Invalid leave type: ${
             balance?.leaveType ?? "undefined"
@@ -188,7 +244,9 @@ export const initializeLeaveBalances = async (req, res) => {
         });
       }
 
-      if (seenLeaveTypes.has(balance.leaveType)) {
+      if (
+        seenLeaveTypes.has(balance.leaveType)
+      ) {
         return res.status(400).json({
           message: `Duplicate leave type: ${balance.leaveType}`,
         });
@@ -196,9 +254,10 @@ export const initializeLeaveBalances = async (req, res) => {
 
       seenLeaveTypes.add(balance.leaveType);
 
-      const totalAllotted = parseNonNegativeNumber(
-        balance.totalAllotted
-      );
+      const totalAllotted =
+        parseNonNegativeNumber(
+          balance.totalAllotted
+        );
 
       if (totalAllotted === null) {
         return res.status(400).json({
@@ -210,7 +269,9 @@ export const initializeLeaveBalances = async (req, res) => {
       const carriedOver =
         balance.carriedOver === undefined
           ? 0
-          : parseNonNegativeNumber(balance.carriedOver);
+          : parseNonNegativeNumber(
+              balance.carriedOver
+            );
 
       if (carriedOver === null) {
         return res.status(400).json({
@@ -226,13 +287,6 @@ export const initializeLeaveBalances = async (req, res) => {
             leaveType: balance.leaveType,
             cycleYear: year,
           },
-
-          /*
-           * Initialization must NEVER reset `used`.
-           *
-           * If an employee already has approved leave,
-           * re-running initialization must not erase it.
-           */
           update: {
             $setOnInsert: {
               employeeId,
@@ -240,31 +294,51 @@ export const initializeLeaveBalances = async (req, res) => {
               cycleYear: year,
               used: 0,
             },
-
             $set: {
               totalAllotted,
               carriedOver,
             },
           },
-
           upsert: true,
         },
       });
     }
 
-    await LeaveBalance.bulkWrite(operations);
+    await LeaveBalance.bulkWrite(
+      operations
+    );
 
-    const initializedBalances = await LeaveBalance.find({
-      employeeId,
-      cycleYear: year,
-    }).sort({ leaveType: 1 });
+    await createAuditLog({
+      req,
+      action: "LEAVE_BALANCE_INITIALIZED",
+      entityType: "LeaveBalance",
+      entityId: employeeId,
+      details: {
+        cycleYear: year,
+      },
+    });
 
-    return res.status(200).json(initializedBalances);
+    const initializedBalances =
+      await LeaveBalance.find({
+        employeeId,
+        cycleYear: year,
+      }).sort({ leaveType: 1 });
+
+    return res.status(200).json(
+      initializedBalances
+    );
   } catch (error) {
     console.error(
       "Initialize leave balances error:",
       error
     );
+
+    if (error.code === 11000) {
+      return res.status(409).json({
+        message:
+          "A leave balance already exists for this employee and leave type",
+      });
+    }
 
     return res.status(500).json({
       message: "Failed to initialize leave balances",
@@ -272,33 +346,40 @@ export const initializeLeaveBalances = async (req, res) => {
   }
 };
 
-export const adjustLeaveBalance = async (req, res) => {
+export const adjustLeaveBalance = async (
+  req,
+  res
+) => {
   const { id } = req.params;
 
   try {
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({
+        message:
+          "Only administrators can manage leave balances",
+      });
+    }
+
+    if (!isValidObjectId(id)) {
       return res.status(400).json({
         message: "Invalid leave balance ID",
       });
     }
 
-    /*
-     * `used` is intentionally not accepted here.
-     *
-     * Approved leave increments `used`.
-     * Cancellation of approved leave decrements `used`.
-     *
-     * Allowing admins to arbitrarily modify `used` would
-     * disconnect LeaveBalance from LeaveRequest history.
-     */
-    if (Object.prototype.hasOwnProperty.call(req.body, "used")) {
+    if (
+      Object.prototype.hasOwnProperty.call(
+        req.body,
+        "used"
+      )
+    ) {
       return res.status(400).json({
         message:
           "The used balance cannot be manually adjusted. It is managed by leave approval and cancellation.",
       });
     }
 
-    const balance = await LeaveBalance.findById(id);
+    const balance =
+      await LeaveBalance.findById(id);
 
     if (!balance) {
       return res.status(404).json({
@@ -324,7 +405,9 @@ export const adjustLeaveBalance = async (req, res) => {
     const nextTotalAllotted =
       totalAllotted === undefined
         ? balance.totalAllotted
-        : parseNonNegativeNumber(totalAllotted);
+        : parseNonNegativeNumber(
+            totalAllotted
+          );
 
     if (nextTotalAllotted === null) {
       return res.status(400).json({
@@ -336,7 +419,9 @@ export const adjustLeaveBalance = async (req, res) => {
     const nextCarriedOver =
       carriedOver === undefined
         ? balance.carriedOver
-        : parseNonNegativeNumber(carriedOver);
+        : parseNonNegativeNumber(
+            carriedOver
+          );
 
     if (nextCarriedOver === null) {
       return res.status(400).json({
@@ -345,10 +430,6 @@ export const adjustLeaveBalance = async (req, res) => {
       });
     }
 
-    /*
-     * Existing approved leave cannot become greater than
-     * the newly configured entitlement.
-     */
     const maximumUsed =
       nextTotalAllotted + nextCarriedOver;
 
@@ -361,13 +442,23 @@ export const adjustLeaveBalance = async (req, res) => {
       });
     }
 
-    balance.totalAllotted = nextTotalAllotted;
-    balance.carriedOver = nextCarriedOver;
+    balance.totalAllotted =
+      nextTotalAllotted;
+    balance.carriedOver =
+      nextCarriedOver;
 
     await balance.save();
 
+    await createAuditLog({
+      req,
+      action: "LEAVE_BALANCE_UPDATED",
+      entityType: "LeaveBalance",
+      entityId: balance._id,
+    });
+
     return res.json({
-      message: "Leave balance updated successfully",
+      message:
+        "Leave balance updated successfully",
       balance,
     });
   } catch (error) {
