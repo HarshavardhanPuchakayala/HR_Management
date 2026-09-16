@@ -1,29 +1,35 @@
 import { useEffect, useState } from "react";
-import {
-  getEmployees,
-} from "../api/employees.js";
+import { LuSearch, LuClock } from "react-icons/lu";
+import { getEmployees } from "../api/employees.js";
 import {
   getEmployeeAttendance,
   getAllAttendance,
 } from "../api/attendance.js";
 import { useAuth } from "../context/AuthContext.jsx";
+import {
+  PageHeader,
+  Alert,
+  Card,
+  Table,
+  Td,
+  Field,
+  StatusPill,
+  EmptyState,
+} from "../components/Ui.jsx";
 
 const AttendanceOversight = () => {
   const { user } = useAuth();
 
   const [employees, setEmployees] = useState([]);
-  const [selectedEmployeeId, setSelectedEmployeeId] =
-    useState("");
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
 
   const [attendance, setAttendance] = useState([]);
 
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
-  const [loadingEmployees, setLoadingEmployees] =
-    useState(true);
-  const [loadingAttendance, setLoadingAttendance] =
-    useState(false);
+  const [loadingEmployees, setLoadingEmployees] = useState(true);
+  const [loadingAttendance, setLoadingAttendance] = useState(false);
 
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -38,16 +44,13 @@ const AttendanceOversight = () => {
         const data = await getEmployees();
 
         const activeEmployees = Array.isArray(data)
-          ? data.filter(
-              (employee) => employee.status === "active"
-            )
+          ? data.filter((employee) => employee.status === "active")
           : [];
 
         setEmployees(activeEmployees);
-      } catch (error) {
+      } catch (err) {
         setError(
-          error.response?.data?.message ||
-            "Failed to load employees."
+          err.response?.data?.message || "Failed to load employees."
         );
       } finally {
         setLoadingEmployees(false);
@@ -65,9 +68,7 @@ const AttendanceOversight = () => {
     setError("");
     setMessage("");
 
-    if (!employeeId) {
-      return;
-    }
+    if (!employeeId) return;
 
     try {
       setLoadingAttendance(true);
@@ -75,16 +76,16 @@ const AttendanceOversight = () => {
       const data = await getEmployeeAttendance(employeeId);
 
       setAttendance(Array.isArray(data) ? data : []);
-    } catch (error) {
-      if (error.response?.status === 403) {
+    } catch (err) {
+      if (err.response?.status === 403) {
         setError(
           "You are not authorized to view this employee's attendance."
         );
-      } else if (error.response?.status === 404) {
+      } else if (err.response?.status === 404) {
         setError("Employee was not found.");
       } else {
         setError(
-          error.response?.data?.message ||
+          err.response?.data?.message ||
             "Failed to load employee attendance."
         );
       }
@@ -93,26 +94,16 @@ const AttendanceOversight = () => {
     }
   };
 
-  const handleAdminAttendanceSearch = async (
-    event
-  ) => {
+  const handleAdminAttendanceSearch = async (event) => {
     event.preventDefault();
 
     if (!startDate && !endDate) {
-      setError(
-        "Select at least one date before searching."
-      );
+      setError("Select at least one date before searching.");
       return;
     }
 
-    if (
-      startDate &&
-      endDate &&
-      endDate < startDate
-    ) {
-      setError(
-        "End date cannot be earlier than start date."
-      );
+    if (startDate && endDate && endDate < startDate) {
+      setError("End date cannot be earlier than start date.");
       return;
     }
 
@@ -129,14 +120,14 @@ const AttendanceOversight = () => {
 
       setAttendance(Array.isArray(data) ? data : []);
       setMessage("Attendance records loaded.");
-    } catch (error) {
-      if (error.response?.status === 403) {
+    } catch (err) {
+      if (err.response?.status === 403) {
         setError(
           "You are not authorized to view all attendance records."
         );
       } else {
         setError(
-          error.response?.data?.message ||
+          err.response?.data?.message ||
             "Failed to load attendance records."
         );
       }
@@ -146,154 +137,122 @@ const AttendanceOversight = () => {
   };
 
   const selectedEmployee = employees.find(
-    (employee) =>
-      employee._id === selectedEmployeeId
+    (employee) => employee._id === selectedEmployeeId
   );
 
-  const formatDate = (date) => {
-    return new Date(date).toLocaleDateString();
-  };
+  const formatDate = (date) => new Date(date).toLocaleDateString();
 
-  const formatTime = (date) => {
-    return date
-      ? new Date(date).toLocaleTimeString()
-      : "—";
-  };
+  const formatTime = (date) =>
+    date ? new Date(date).toLocaleTimeString() : "—";
 
   if (loadingEmployees) {
-    return <div>Loading employees...</div>;
+    return (
+      <div className="flex h-64 items-center justify-center text-slate">
+        Loading employees...
+      </div>
+    );
   }
 
   return (
     <div>
-      <header>
-        <h1>Attendance Oversight</h1>
+      <PageHeader
+        title="Attendance Oversight"
+        subtitle="Attendance history for the people you're authorized to oversee."
+      />
 
-        <p>
-          View attendance history for employees you are
-          authorized to oversee.
-        </p>
-      </header>
+      <Alert tone="error">{error}</Alert>
+      <Alert tone="success">{message}</Alert>
 
-      {error && <p>{error}</p>}
-      {message && <p>{message}</p>}
-
-      <section>
-        <h2>Employee Attendance</h2>
-
-        <label htmlFor="employee">
-          Select employee
-        </label>
-
-        <select
-          id="employee"
-          value={selectedEmployeeId}
-          onChange={handleEmployeeChange}
-        >
-          <option value="">
-            Select an employee
-          </option>
-
-          {employees.map((employee) => (
-            <option
-              key={employee._id}
-              value={employee._id}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card title="By employee">
+          <Field label="Select employee" htmlFor="employee">
+            <select
+              id="employee"
+              className="field-input"
+              value={selectedEmployeeId}
+              onChange={handleEmployeeChange}
             >
-              {employee.name} — {employee.department}
-            </option>
-          ))}
-        </select>
-      </section>
+              <option value="">Select an employee</option>
+              {employees.map((employee) => (
+                <option key={employee._id} value={employee._id}>
+                  {employee.name} — {employee.department}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </Card>
 
-      {isAdmin && (
-        <section>
-          <h2>Company Attendance Search</h2>
+        {isAdmin && (
+          <Card title="Across the company">
+            <form onSubmit={handleAdminAttendanceSearch}>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Start date" htmlFor="startDate">
+                  <input
+                    id="startDate"
+                    type="date"
+                    className="field-input"
+                    value={startDate}
+                    onChange={(event) => setStartDate(event.target.value)}
+                  />
+                </Field>
 
-          <form
-            onSubmit={handleAdminAttendanceSearch}
-          >
-            <div>
-              <label htmlFor="startDate">
-                Start date
-              </label>
+                <Field label="End date" htmlFor="endDate">
+                  <input
+                    id="endDate"
+                    type="date"
+                    className="field-input"
+                    value={endDate}
+                    min={startDate || undefined}
+                    onChange={(event) => setEndDate(event.target.value)}
+                  />
+                </Field>
+              </div>
 
-              <input
-                id="startDate"
-                type="date"
-                value={startDate}
-                onChange={(event) =>
-                  setStartDate(event.target.value)
-                }
-              />
-            </div>
-
-            <div>
-              <label htmlFor="endDate">
-                End date
-              </label>
-
-              <input
-                id="endDate"
-                type="date"
-                value={endDate}
-                min={startDate || undefined}
-                onChange={(event) =>
-                  setEndDate(event.target.value)
-                }
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loadingAttendance}
-            >
-              {loadingAttendance
-                ? "Loading..."
-                : "Search Attendance"}
-            </button>
-          </form>
-        </section>
-      )}
-
-      <section>
-        {selectedEmployee && (
-          <h2>
-            Attendance — {selectedEmployee.name}
-          </h2>
+              <button
+                type="submit"
+                disabled={loadingAttendance}
+                className="btn-primary mt-4"
+              >
+                <LuSearch size={15} />
+                {loadingAttendance ? "Loading..." : "Search attendance"}
+              </button>
+            </form>
+          </Card>
         )}
+      </div>
+
+      <div className="mt-6">
+        <h2 className="mb-4 text-lg font-semibold">
+          {selectedEmployee
+            ? `Attendance — ${selectedEmployee.name}`
+            : "Attendance records"}
+        </h2>
 
         {loadingAttendance ? (
-          <p>Loading attendance...</p>
+          <p className="text-slate">Loading attendance...</p>
         ) : attendance.length === 0 ? (
-          <p>No attendance records found.</p>
+          <EmptyState
+            icon={LuClock}
+            title="No attendance records"
+            hint="Pick an employee, or search a date range, to see records here."
+          />
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Status</th>
-                <th>Check In</th>
-                <th>Check Out</th>
+          <Table head={["Date", "Status", "Check in", "Check out"]}>
+            {attendance.map((record) => (
+              <tr key={record._id} className="bg-surface">
+                <Td className="font-medium">{formatDate(record.date)}</Td>
+                <Td>
+                  <StatusPill status={record.status} />
+                </Td>
+                <Td className="text-slate">{formatTime(record.checkIn)}</Td>
+                <Td className="text-slate">
+                  {formatTime(record.checkOut)}
+                </Td>
               </tr>
-            </thead>
-
-            <tbody>
-              {attendance.map((record) => (
-                <tr key={record._id}>
-                  <td>{formatDate(record.date)}</td>
-                  <td>{record.status}</td>
-                  <td>
-                    {formatTime(record.checkIn)}
-                  </td>
-                  <td>
-                    {formatTime(record.checkOut)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+            ))}
+          </Table>
         )}
-      </section>
+      </div>
     </div>
   );
 };

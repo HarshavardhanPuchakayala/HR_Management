@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { randomUUID } from "crypto";
 
 import AssistantConversation from "../models/AssistantConversation.js";
 import { generate } from "../ai/client.js";
@@ -258,7 +259,7 @@ export const chat = async (
           "string"
       ) {
         toolResults.push({
-          id: null,
+          id: randomUUID(),
           name: "unknown",
           result: null,
           success: false,
@@ -280,7 +281,7 @@ export const chat = async (
           Boolean(result?.success);
 
         toolResults.push({
-          id: toolCall.id || null,
+          id: toolCall.id || randomUUID(),
           name: toolCall.name,
           result: success
             ? result.result ?? null
@@ -292,7 +293,7 @@ export const chat = async (
         });
       } catch {
         toolResults.push({
-          id: toolCall.id || null,
+          id: toolCall.id || randomUUID(),
           name: toolCall.name,
           result: null,
           success: false,

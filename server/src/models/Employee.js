@@ -1,3 +1,4 @@
+
 import mongoose from "mongoose";
 
 const employeeSchema = new mongoose.Schema(
@@ -7,6 +8,7 @@ const employeeSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+
     email: {
       type: String,
       required: true,
@@ -14,30 +16,44 @@ const employeeSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
     },
-    phone: String,
+
+    phone: {
+      type: String,
+      trim: true,
+    },
+
     jobTitle: {
       type: String,
       required: true,
       trim: true,
     },
+
     department: {
       type: String,
       required: true,
       trim: true,
     },
+
     managerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Employee",
       default: null,
     },
+
     status: {
       type: String,
       enum: ["active", "inactive"],
       default: "active",
     },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+  }
 );
 
-const Employee = mongoose.model("Employee", employeeSchema);
+const Employee = mongoose.model(
+  "Employee",
+  employeeSchema
+);
+
 export default Employee;

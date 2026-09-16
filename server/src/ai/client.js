@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { randomUUID } from "crypto";
 
 const apiKey = process.env.OPENROUTER_API_KEY;
 const model = process.env.OPENROUTER_MODEL;
@@ -185,7 +186,11 @@ export const generate = async ({
       }
 
       return {
-        id: toolCall.id,
+        id:
+          typeof toolCall.id === "string" &&
+          toolCall.id.trim() !== ""
+            ? toolCall.id
+            : randomUUID(),
         name: toolCall.function.name,
         args,
       };

@@ -1,8 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { LuCheck, LuX, LuUsers } from "react-icons/lu";
 import {
   getTeamLeaveRequests,
   approveOrRejectLeaveRequest,
 } from "../api/leaveRequests.js";
+import {
+  PageHeader,
+  Alert,
+  StatusPill,
+  EmptyState,
+} from "../components/Ui.jsx";
+import { pageEnter } from "../lib/Motion.js";
 
 const TeamLeaveRequests = () => {
   const [requests, setRequests] = useState([]);
@@ -11,6 +19,9 @@ const TeamLeaveRequests = () => {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
+  const headerRef = useRef(null);
+  const listRef = useRef(null);
+
   const fetchTeamRequests = async () => {
     try {
       setError("");
@@ -18,12 +29,12 @@ const TeamLeaveRequests = () => {
       const data = await getTeamLeaveRequests();
 
       setRequests(Array.isArray(data) ? data : []);
-    } catch (error) {
-      if (error.response?.status === 403) {
+    } catch (err) {
+      if (err.response?.status === 403) {
         setError("You are not authorized to view team leave requests.");
       } else {
         setError(
-          error.response?.data?.message ||
+          err.response?.data?.message ||
             "Failed to load team leave requests."
         );
       }
@@ -35,6 +46,15 @@ const TeamLeaveRequests = () => {
   useEffect(() => {
     fetchTeamRequests();
   }, []);
+
+  useEffect(() => {
+    if (loading) return;
+
+    pageEnter({
+      header: headerRef.current,
+      stagger: listRef.current?.querySelectorAll(".request-card"),
+    });
+  }, [loading]);
 
   const handleDecision = async (id, status) => {
     try {
@@ -57,27 +77,22 @@ const TeamLeaveRequests = () => {
         )
       );
 
-      setMessage(
-        `Leave request ${status} successfully.`
-      );
-    } catch (error) {
-      const statusCode = error.response?.status;
+      setMessage(`Leave request ${status}.`);
+    } catch (err) {
+      const statusCode = err.response?.status;
 
       if (statusCode === 403) {
-        setError(
-          "You are not authorized to make this leave decision."
-        );
+        setError("You are not authorized to make this leave decision.");
       } else if (statusCode === 400) {
         setError(
-          "This leave request has already been resolved. Refresh the page to see the latest status."
+          "This request was already resolved elsewhere. Showing the latest status."
         );
 
         // Refresh because another tab/user may have resolved it.
         await fetchTeamRequests();
       } else {
         setError(
-          error.response?.data?.message ||
-            "Failed to update leave request."
+          err.response?.data?.message || "Failed to update leave request."
         );
       }
     } finally {
@@ -85,96 +100,124 @@ const TeamLeaveRequests = () => {
     }
   };
 
-  const formatDate = (date) => {
-    return new Date(date).toLocaleDateString();
-  };
+  const formatDate = (date) => new Date(date).toLocaleDateString();
 
   if (loading) {
-    return <div>Loading team leave requests...</div>;
+    return (
+      <div className="flex h-64 items-center justify-center text-slate">
+        Loading team leave requests...
+      </div>
+    );
   }
+
+  const pendingCount = requests.filter(
+    (request) => request.status === "pending"
+  ).length;
 
   return (
     <div>
-      <h1>Team Leave Requests</h1>
+      <div ref={headerRef}>
+        <PageHeader
+          title="Team Leave"
+          subtitle={
+            pendingCount > 0
+              ? `${pendingCount} request${
+                  pendingCount === 1 ? "" : "s"
+                } waiting on your decision.`
+              : "Nothing is waiting on you right now."
+          }
+        />
+      </div>
 
-      {error && <p>{error}</p>}
-      {message && <p>{message}</p>}
+      <Alert tone="error">{error}</Alert>
+      <Alert tone="success">{message}</Alert>
 
-      {requests.length === 0 ? (
-        <p>No leave requests from your team.</p>
-      ) : (
-        <div>
-          {requests.map((request) => {
-            const employee = request.employeeId;
-            const isPending = request.status === "pending";
-            const isProcessing = processingId === request._id;
+      <div ref={listRef}>
+        {requests.length === 0 ? (
+          <EmptyState
+            icon={LuUsers}
+            title="No requests from your team"
+            hint="When someone reporting to you requests leave, it lands here."
+          />
+        ) : (
+          <div className="space-y-3">
+            {requests.map((request) => {
+              const employee = request.employeeId;
+              const isPending = request.status === "pending";
+              const isProcessing = processingId === request._id;
 
-            return (
-              <article key={request._id}>
-                <h2>
-                  {employee?.name || "Unknown employee"}
-                </h2>
+              return (
+                <article key={request._id} className="request-card card p-5">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="flex items-start gap-3.5">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-canvas font-display font-semibold text-ink">
+                        {(employee?.name || "?").slice(0, 1).toUpperCase()}
+                      </div>
 
-                <p>
-                  Department:{" "}
-                  {employee?.department || "Not available"}
-                </p>
+                      <div>
+                        <p className="font-display font-semibold">
+                          {employee?.name || "Unknown employee"}
+                        </p>
+                        <p className="text-sm text-slate">
+                          {employee?.department || "No department"}
+                        </p>
 
-                <p>
-                  Dates: {formatDate(request.startDate)} -{" "}
-                  {formatDate(request.endDate)}
-                </p>
+                        <p className="mt-2.5 text-sm">
+                          {formatDate(request.startDate)} —{" "}
+                          {formatDate(request.endDate)}
+                          <span className="ml-2 capitalize text-slate">
+                            {request.leaveType}
+                          </span>
+                        </p>
 
-                <p>
-                  Leave type: {request.leaveType}
-                </p>
+                        {request.reason && (
+                          <p className="mt-2 text-sm text-slate">
+                            {request.reason}
+                          </p>
+                        )}
+                      </div>
+                    </div>
 
-                {request.reason && (
-                  <p>Reason: {request.reason}</p>
-                )}
+                    <div className="flex flex-col items-end gap-3">
+                      <StatusPill status={request.status} />
 
-                <p>
-                  Status: <strong>{request.status}</strong>
-                </p>
+                      {isPending && (
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            disabled={isProcessing}
+                            onClick={() =>
+                              handleDecision(request._id, "approved")
+                            }
+                            className="inline-flex items-center gap-1.5 rounded-full bg-mint px-4 py-2 text-sm font-semibold text-ink
+                              transition-colors hover:bg-mintDark hover:text-white disabled:opacity-50"
+                          >
+                            <LuCheck size={15} />
+                            {isProcessing ? "Working..." : "Approve"}
+                          </button>
 
-                {isPending && (
-                  <div>
-                    <button
-                      type="button"
-                      disabled={isProcessing}
-                      onClick={() =>
-                        handleDecision(
-                          request._id,
-                          "approved"
-                        )
-                      }
-                    >
-                      {isProcessing
-                        ? "Processing..."
-                        : "Approve"}
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={isProcessing}
-                      onClick={() =>
-                        handleDecision(
-                          request._id,
-                          "rejected"
-                        )
-                      }
-                    >
-                      {isProcessing
-                        ? "Processing..."
-                        : "Reject"}
-                    </button>
+                          <button
+                            type="button"
+                            disabled={isProcessing}
+                            onClick={() =>
+                              handleDecision(request._id, "rejected")
+                            }
+                            className="inline-flex items-center gap-1.5 rounded-full border border-line px-4 py-2 text-sm font-semibold text-ink
+                              transition-colors hover:border-coral hover:text-coral disabled:opacity-50"
+                          >
+                            <LuX size={15} />
+                            Reject
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                )}
-              </article>
-            );
-          })}
-        </div>
-      )}
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 };

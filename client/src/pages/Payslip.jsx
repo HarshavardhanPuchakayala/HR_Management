@@ -1,7 +1,6 @@
-// frontend/src/pages/Payslip.jsx
-
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
+import { LuPrinter } from "react-icons/lu";
 import { getPayslip } from "../api/payroll.js";
 
 const MONTHS = [
@@ -32,6 +31,36 @@ const formatDate = (value) => {
   return new Date(value).toLocaleDateString("en-IN");
 };
 
+const Detail = ({ label, value }) => (
+  <div>
+    <p className="text-xs text-slate">{label}</p>
+    <p className="mt-0.5 text-sm font-medium">{value || "-"}</p>
+  </div>
+);
+
+const SalaryTable = ({ title, rows, totalLabel, total }) => (
+  <section>
+    <h2 className="mb-3 text-base font-semibold">{title}</h2>
+
+    <div className="overflow-hidden rounded-xl border border-line">
+      {rows.map(([label, value]) => (
+        <div
+          key={label}
+          className="flex justify-between border-b border-line px-4 py-2.5 text-sm last:border-none"
+        >
+          <span className="text-slate">{label}</span>
+          <span className="tabular-nums">{formatMoney(value)}</span>
+        </div>
+      ))}
+
+      <div className="flex justify-between bg-canvas px-4 py-3 text-sm font-semibold">
+        <span>{totalLabel}</span>
+        <span className="tabular-nums">{formatMoney(total)}</span>
+      </div>
+    </div>
+  </section>
+);
+
 export default function Payslip() {
   const { id } = useParams();
 
@@ -40,53 +69,46 @@ export default function Payslip() {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    const loadPayslip = async () => {
+      try {
+        setLoading(true);
+        setError("");
+
+        const response = await getPayslip(id);
+
+        setPayslip(response.payslip);
+      } catch (err) {
+        setError(
+          err.response?.data?.message || "Failed to load payslip"
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
     loadPayslip();
   }, [id]);
 
-  const loadPayslip = async () => {
-    try {
-      setLoading(true);
-      setError("");
-
-      const response = await getPayslip(id);
-
-      setPayslip(response.payslip);
-    } catch (err) {
-      setError(
-        err.response?.data?.message ||
-          "Failed to load payslip"
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
   if (loading) {
     return (
-      <div style={styles.page}>
-        <div style={styles.message}>
-          Loading payslip...
-        </div>
+      <div className="flex h-64 items-center justify-center text-slate">
+        Loading payslip...
       </div>
     );
   }
 
   if (error) {
     return (
-      <div style={styles.page}>
-        <div style={styles.error}>
-          {error}
-        </div>
+      <div className="rounded-xl bg-coral/10 px-4 py-3 text-sm text-coralDark">
+        {error}
       </div>
     );
   }
 
   if (!payslip) {
     return (
-      <div style={styles.page}>
-        <div style={styles.message}>
-          Payslip not found.
-        </div>
+      <div className="flex h-64 items-center justify-center text-slate">
+        Payslip not found.
       </div>
     );
   }
@@ -94,312 +116,163 @@ export default function Payslip() {
   const employee = payslip.employeeId;
 
   return (
-    <div style={styles.page}>
-      <div style={styles.actions}>
+    <div>
+      <div className="mb-4 flex justify-end print:hidden">
         <button
+          type="button"
           onClick={() => window.print()}
-          style={styles.printButton}
+          className="btn-primary"
         >
-          Print Payslip
+          <LuPrinter size={15} />
+          Print payslip
         </button>
       </div>
 
-      <div id="payslip" style={styles.payslip}>
-        <header style={styles.header}>
+      <div
+        id="payslip"
+        className="card p-8 print:border-none print:shadow-none"
+      >
+        <header className="flex items-start justify-between border-b-2 border-ink pb-6">
           <div>
-            <h1 style={styles.companyName}>
+            <h1 className="font-display text-2xl font-semibold">
               PeopleFlow
             </h1>
-
-            <p style={styles.companyText}>
-              Employee Payroll Statement
+            <p className="mt-1 text-sm text-slate">
+              Employee payroll statement
             </p>
           </div>
 
-          <div style={styles.headerRight}>
-            <strong>PAYSLIP</strong>
-
-            <span>
-              {MONTHS[
-                payslip.payrollMonth - 1
-              ]}{" "}
-              {payslip.payrollYear}
-            </span>
+          <div className="text-right">
+            <p className="font-display font-semibold">PAYSLIP</p>
+            <p className="text-sm text-slate">
+              {MONTHS[payslip.payrollMonth - 1]} {payslip.payrollYear}
+            </p>
           </div>
         </header>
 
-        <section style={styles.employeeSection}>
-          <div>
-            <span style={styles.label}>
-              Employee
-            </span>
-
-            <strong style={styles.value}>
-              {employee?.name || "-"}
-            </strong>
-          </div>
-
-          <div>
-            <span style={styles.label}>
-              Employee Email
-            </span>
-
-            <strong style={styles.value}>
-              {employee?.email || "-"}
-            </strong>
-          </div>
-
-          <div>
-            <span style={styles.label}>
-              Department
-            </span>
-
-            <strong style={styles.value}>
-              {employee?.department || "-"}
-            </strong>
-          </div>
-
-          <div>
-            <span style={styles.label}>
-              Job Title
-            </span>
-
-            <strong style={styles.value}>
-              {employee?.jobTitle || "-"}
-            </strong>
-          </div>
-
-          <div>
-            <span style={styles.label}>
-              Pay Period
-            </span>
-
-            <strong style={styles.value}>
-              {formatDate(
-                payslip.periodStart
-              )}{" "}
-              -{" "}
-              {formatDate(
-                payslip.periodEnd
-              )}
-            </strong>
-          </div>
-
-          <div>
-            <span style={styles.label}>
-              Paid Days
-            </span>
-
-            <strong style={styles.value}>
-              {payslip.paidDays} /{" "}
-              {payslip.workingDays}
-            </strong>
-          </div>
+        <section className="grid grid-cols-2 gap-5 border-b border-line py-6 sm:grid-cols-3">
+          <Detail label="Employee" value={employee?.name} />
+          <Detail label="Email" value={employee?.email} />
+          <Detail label="Department" value={employee?.department} />
+          <Detail label="Job title" value={employee?.jobTitle} />
+          <Detail
+            label="Pay period"
+            value={`${formatDate(payslip.periodStart)} — ${formatDate(
+              payslip.periodEnd
+            )}`}
+          />
+          <Detail
+            label="Paid days"
+            value={`${payslip.paidDays} / ${payslip.workingDays}`}
+          />
         </section>
 
-        <div style={styles.columns}>
+        <div className="mt-7 grid grid-cols-1 gap-7 lg:grid-cols-2">
           <SalaryTable
             title="Earnings"
             rows={[
+              ["Basic salary", payslip.earnings?.basic],
+              ["HRA", payslip.earnings?.hra],
+              ["Special allowance", payslip.earnings?.specialAllowance],
               [
-                "Basic Salary",
-                payslip.earnings?.basic,
+                "Conveyance allowance",
+                payslip.earnings?.conveyanceAllowance,
               ],
-              [
-                "HRA",
-                payslip.earnings?.hra,
-              ],
-              [
-                "Special Allowance",
-                payslip.earnings
-                  ?.specialAllowance,
-              ],
-              [
-                "Conveyance Allowance",
-                payslip.earnings
-                  ?.conveyanceAllowance,
-              ],
-              [
-                "Medical Allowance",
-                payslip.earnings
-                  ?.medicalAllowance,
-              ],
-              [
-                "Other Allowance",
-                payslip.earnings
-                  ?.otherAllowance,
-              ],
-              [
-                "Bonus",
-                payslip.earnings?.bonus,
-              ],
-              [
-                "Overtime",
-                payslip.earnings?.overtime,
-              ],
-              [
-                "Arrears",
-                payslip.earnings?.arrears,
-              ],
-              [
-                "Reimbursements",
-                payslip.earnings
-                  ?.reimbursements,
-              ],
+              ["Medical allowance", payslip.earnings?.medicalAllowance],
+              ["Other allowance", payslip.earnings?.otherAllowance],
+              ["Bonus", payslip.earnings?.bonus],
+              ["Overtime", payslip.earnings?.overtime],
+              ["Arrears", payslip.earnings?.arrears],
+              ["Reimbursements", payslip.earnings?.reimbursements],
             ]}
-            totalLabel="Gross Salary"
+            totalLabel="Gross salary"
             total={payslip.grossPay}
           />
 
           <SalaryTable
             title="Deductions"
             rows={[
-              [
-                "Employee PF",
-                payslip.deductions
-                  ?.employeePf,
-              ],
-              [
-                "Employee ESI",
-                payslip.deductions
-                  ?.employeeEsi,
-              ],
-              [
-                "Professional Tax",
-                payslip.deductions
-                  ?.professionalTax,
-              ],
-              [
-                "Income Tax / TDS",
-                payslip.deductions?.tds,
-              ],
-              [
-                "Voluntary PF",
-                payslip.deductions
-                  ?.voluntaryPf,
-              ],
-              [
-                "Other Deductions",
-                payslip.deductions?.other,
-              ],
+              ["Employee PF", payslip.deductions?.employeePf],
+              ["Employee ESI", payslip.deductions?.employeeEsi],
+              ["Professional tax", payslip.deductions?.professionalTax],
+              ["Income tax / TDS", payslip.deductions?.tds],
+              ["Voluntary PF", payslip.deductions?.voluntaryPf],
+              ["Other deductions", payslip.deductions?.other],
             ]}
-            totalLabel="Total Deductions"
+            totalLabel="Total deductions"
             total={payslip.totalDeductions}
           />
         </div>
 
-        <section style={styles.netSalary}>
-          <span>NET SALARY</span>
-
-          <strong>
+        {/* Net pay is the number people open a payslip to see */}
+        <section className="mt-7 flex items-center justify-between rounded-xl2 bg-ink px-6 py-5 text-white">
+          <span className="text-sm text-white/60">Net salary</span>
+          <strong className="font-display text-3xl font-semibold tabular-nums">
             {formatMoney(payslip.netPay)}
           </strong>
         </section>
 
-        <section style={styles.employerSection}>
-          <h3 style={styles.sectionTitle}>
-            Employer Contributions
+        <section className="mt-7">
+          <h3 className="mb-3 text-base font-semibold">
+            Employer contributions
           </h3>
 
-          <div style={styles.employerRows}>
-            <div style={styles.employerRow}>
-              <span>Employer PF</span>
-
-              <strong>
-                {formatMoney(
-                  payslip
-                    .employerContributions
-                    ?.employerPf
-                )}
-              </strong>
+          <div className="overflow-hidden rounded-xl border border-line">
+            <div className="flex justify-between border-b border-line px-4 py-2.5 text-sm">
+              <span className="text-slate">Employer PF</span>
+              <span className="tabular-nums">
+                {formatMoney(payslip.employerContributions?.employerPf)}
+              </span>
             </div>
-
-            <div style={styles.employerRow}>
-              <span>Employer ESI</span>
-
-              <strong>
-                {formatMoney(
-                  payslip
-                    .employerContributions
-                    ?.employerEsi
-                )}
-              </strong>
+            <div className="flex justify-between border-b border-line px-4 py-2.5 text-sm">
+              <span className="text-slate">Employer ESI</span>
+              <span className="tabular-nums">
+                {formatMoney(payslip.employerContributions?.employerEsi)}
+              </span>
             </div>
-
-            <div
-              style={{
-                ...styles.employerRow,
-                ...styles.employerTotal,
-              }}
-            >
-              <strong>
-                Employer Cost
-              </strong>
-
-              <strong>
-                {formatMoney(
-                  payslip.employerCost
-                )}
-              </strong>
+            <div className="flex justify-between bg-canvas px-4 py-3 text-sm font-semibold">
+              <span>Employer cost</span>
+              <span className="tabular-nums">
+                {formatMoney(payslip.employerCost)}
+              </span>
             </div>
           </div>
         </section>
 
-        <section style={styles.taxSection}>
-          <h3 style={styles.sectionTitle}>
-            Payroll Information
+        <section className="mt-7 border-t border-line pt-6">
+          <h3 className="mb-3 text-base font-semibold">
+            Payroll information
           </h3>
 
-          <div style={styles.infoGrid}>
-            <Info
-              label="Payroll Status"
-              value={payslip.status}
+          <div className="grid grid-cols-2 gap-5 sm:grid-cols-3">
+            <Detail label="Payroll status" value={payslip.status} />
+            <Detail
+              label="Rule version"
+              value={payslip.statutoryRuleVersion}
             />
-
-            <Info
-              label="Rule Version"
-              value={
-                payslip.statutoryRuleVersion
-              }
-            />
-
-            <Info
+            <Detail
               label="Calculated"
-              value={formatDate(
-                payslip.calculatedAt
-              )}
+              value={formatDate(payslip.calculatedAt)}
             />
-
-            <Info
+            <Detail
               label="Approved"
-              value={formatDate(
-                payslip.approvedAt
-              )}
+              value={formatDate(payslip.approvedAt)}
             />
-
-            <Info
-              label="Taxable Income"
-              value={formatMoney(
-                payslip.taxableIncome
-              )}
+            <Detail
+              label="Taxable income"
+              value={formatMoney(payslip.taxableIncome)}
             />
-
-            <Info
-              label="Loss of Pay Days"
+            <Detail
+              label="Loss of pay days"
               value={payslip.lossOfPayDays}
             />
           </div>
         </section>
 
-        <footer style={styles.footer}>
-          <p>
-            This payslip is generated internally
-            by PeopleFlow.
-          </p>
-
-          <p>
-            No employee payroll data is
-            automatically transmitted to any
+        <footer className="mt-8 border-t border-line pt-5 text-xs text-slate">
+          <p>This payslip is generated internally by PeopleFlow.</p>
+          <p className="mt-1">
+            No employee payroll data is automatically transmitted to any
             external or government system.
           </p>
         </footer>
@@ -407,236 +280,3 @@ export default function Payslip() {
     </div>
   );
 }
-
-function SalaryTable({
-  title,
-  rows,
-  totalLabel,
-  total,
-}) {
-  return (
-    <section>
-      <h2 style={styles.sectionTitle}>
-        {title}
-      </h2>
-
-      <div style={styles.table}>
-        {rows.map(([label, value]) => (
-          <div
-            key={label}
-            style={styles.row}
-          >
-            <span>{label}</span>
-
-            <span>
-              {formatMoney(value)}
-            </span>
-          </div>
-        ))}
-
-        <div
-          style={{
-            ...styles.row,
-            ...styles.totalRow,
-          }}
-        >
-          <strong>{totalLabel}</strong>
-
-          <strong>
-            {formatMoney(total)}
-          </strong>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function Info({ label, value }) {
-  return (
-    <div>
-      <span style={styles.label}>
-        {label}
-      </span>
-
-      <strong style={styles.value}>
-        {value || "-"}
-      </strong>
-    </div>
-  );
-}
-
-const styles = {
-  page: {
-    maxWidth: "1100px",
-    margin: "0 auto",
-    padding: "24px",
-    background: "#f8fafc",
-    minHeight: "100vh",
-  },
-
-  actions: {
-    display: "flex",
-    justifyContent: "flex-end",
-    marginBottom: "16px",
-  },
-
-  printButton: {
-    padding: "10px 18px",
-    border: "none",
-    borderRadius: "8px",
-    background: "#2563eb",
-    color: "#fff",
-    fontWeight: 600,
-    cursor: "pointer",
-  },
-
-  payslip: {
-    background: "#fff",
-    padding: "36px",
-    border: "1px solid #e2e8f0",
-    borderRadius: "10px",
-  },
-
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    paddingBottom: "24px",
-    borderBottom: "2px solid #0f172a",
-  },
-
-  companyName: {
-    margin: 0,
-    fontSize: "28px",
-  },
-
-  companyText: {
-    margin: "5px 0 0",
-    color: "#64748b",
-  },
-
-  headerRight: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "flex-end",
-    gap: "6px",
-  },
-
-  employeeSection: {
-    display: "grid",
-    gridTemplateColumns:
-      "repeat(auto-fit, minmax(200px, 1fr))",
-    gap: "20px",
-    padding: "24px 0",
-    borderBottom: "1px solid #e2e8f0",
-  },
-
-  label: {
-    display: "block",
-    color: "#64748b",
-    fontSize: "12px",
-    marginBottom: "5px",
-  },
-
-  value: {
-    display: "block",
-    fontSize: "14px",
-  },
-
-  columns: {
-    display: "grid",
-    gridTemplateColumns:
-      "repeat(auto-fit, minmax(350px, 1fr))",
-    gap: "28px",
-    marginTop: "28px",
-  },
-
-  sectionTitle: {
-    fontSize: "16px",
-    margin: "0 0 12px",
-  },
-
-  table: {
-    border: "1px solid #e2e8f0",
-    borderRadius: "8px",
-    overflow: "hidden",
-  },
-
-  row: {
-    display: "flex",
-    justifyContent: "space-between",
-    padding: "10px 14px",
-    borderBottom: "1px solid #f1f5f9",
-    fontSize: "14px",
-  },
-
-  totalRow: {
-    borderBottom: "none",
-    background: "#f8fafc",
-  },
-
-  netSalary: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: "28px",
-    padding: "18px 20px",
-    borderRadius: "8px",
-    background: "#f1f5f9",
-    fontSize: "18px",
-  },
-
-  employerSection: {
-    marginTop: "28px",
-  },
-
-  employerRows: {
-    border: "1px solid #e2e8f0",
-    borderRadius: "8px",
-  },
-
-  employerRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    padding: "11px 14px",
-    borderBottom: "1px solid #f1f5f9",
-  },
-
-  employerTotal: {
-    borderBottom: "none",
-    background: "#f8fafc",
-  },
-
-  taxSection: {
-    marginTop: "28px",
-    paddingTop: "24px",
-    borderTop: "1px solid #e2e8f0",
-  },
-
-  infoGrid: {
-    display: "grid",
-    gridTemplateColumns:
-      "repeat(auto-fit, minmax(180px, 1fr))",
-    gap: "18px",
-  },
-
-  footer: {
-    marginTop: "32px",
-    paddingTop: "18px",
-    borderTop: "1px solid #e2e8f0",
-    color: "#64748b",
-    fontSize: "11px",
-  },
-
-  error: {
-    padding: "14px",
-    borderRadius: "8px",
-    background: "#fee2e2",
-    color: "#991b1b",
-  },
-
-  message: {
-    padding: "30px",
-    textAlign: "center",
-  },
-};

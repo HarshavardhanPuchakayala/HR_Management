@@ -4,6 +4,7 @@ import LeaveRequest from "../models/LeaveRequest.js";
 import LeaveBalance from "../models/LeaveBalance.js";
 import Employee from "../models/Employee.js";
 import User from "../models/User.js";
+import Notification from "../models/Notification.js";
 import { createRateLimiter } from "../middleware/rateLimit.js";
 import { createAuditLog } from "../utils/auditLog.js";
 
@@ -69,6 +70,39 @@ const calculateLeaveDays = (
   }
 
   return days;
+};
+
+// Creates a leave-related notification for a User.
+// Never throws: a failed notification should never break
+// the underlying leave-request flow.
+const notifyUser = async ({
+  recipientUserId,
+  title,
+  message,
+  link = "",
+  session,
+}) => {
+  if (!recipientUserId) return;
+
+  try {
+    await Notification.create(
+      [
+        {
+          recipientId: recipientUserId,
+          title,
+          message,
+          type: "leave",
+          link,
+        },
+      ],
+      session ? { session } : undefined
+    );
+  } catch (error) {
+    console.error(
+      "Failed to create notification:",
+      error
+    );
+  }
 };
 
 const assertManagerCanActOnEmployee =
@@ -222,6 +256,23 @@ export const createLeaveRequest =
           reason: reason.trim(),
           status: "pending",
         });
+
+      // Notify the employee's manager that a new leave request is awaiting review.
+      if (employee.managerId) {
+        const managerUser =
+          await User.findOne({
+            employeeId:
+              employee.managerId,
+          });
+
+        await notifyUser({
+          recipientUserId:
+            managerUser?._id,
+          title: "New leave request",
+          message: `${employee.name} requested ${leaveType} leave from ${start.toLocaleDateString()} to ${end.toLocaleDateString()}.`,
+          link: "/manager/team-leave",
+        });
+      }
 
       await createAuditLog({
         req,
@@ -448,6 +499,21 @@ export const approveOrRejectLeaveRequest =
             session,
           });
 
+          // Notify the employee who made the request of the decision.
+          const requesterUser =
+            await User.findOne({
+              employeeId: requester._id,
+            }).session(session);
+
+          await notifyUser({
+            recipientUserId:
+              requesterUser?._id,
+            title: `Leave request ${status}`,
+            message: `Your ${leaveRequest.leaveType} leave from ${leaveRequest.startDate.toLocaleDateString()} to ${leaveRequest.endDate.toLocaleDateString()} was ${status}.`,
+            link: "/leave/my",
+            session,
+          });
+
           updatedLeaveRequest =
             leaveRequest.toObject();
         }
@@ -639,6 +705,19 @@ export const cancelLeaveRequest =
           await leaveRequest.save({
             session,
           });
+
+          // If it had already been approved, let the approver know it was cancelled.
+          if (leaveRequest.approvedBy) {
+            await notifyUser({
+              recipientUserId:
+                leaveRequest.approvedBy,
+              title:
+                "Approved leave cancelled",
+              message: `An approved ${leaveRequest.leaveType} leave (${leaveRequest.startDate.toLocaleDateString()} - ${leaveRequest.endDate.toLocaleDateString()}) was cancelled by the employee.`,
+              link: "/leave",
+              session,
+            });
+          }
 
           cancelledLeaveRequest =
             leaveRequest.toObject();

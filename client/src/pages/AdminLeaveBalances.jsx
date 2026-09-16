@@ -1,28 +1,28 @@
 import { useEffect, useState } from "react";
-
-import {
-  getEmployees,
-} from "../api/employees.js";
-
+import { LuCheck, LuPencil, LuX } from "react-icons/lu";
+import { getEmployees } from "../api/employees.js";
 import {
   initializeLeaveBalances,
   getEmployeeLeaveBalances,
   adjustLeaveBalance,
 } from "../api/leaveBalances.js";
+import {
+  PageHeader,
+  Alert,
+  Card,
+  Table,
+  Td,
+  Field,
+  EmptyState,
+} from "../components/Ui.jsx";
 
-const LEAVE_TYPES = [
-  "sick",
-  "casual",
-  "vacation",
-  "other",
-];
+const LEAVE_TYPES = ["sick", "casual", "vacation", "other"];
 
 const AdminLeaveBalances = () => {
   const currentYear = new Date().getFullYear();
 
   const [employees, setEmployees] = useState([]);
-  const [selectedEmployeeId, setSelectedEmployeeId] =
-    useState("");
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
 
   const [year, setYear] = useState(currentYear);
   const [balances, setBalances] = useState([]);
@@ -34,10 +34,11 @@ const AdminLeaveBalances = () => {
     other: 0,
   });
 
-  const [loadingEmployees, setLoadingEmployees] =
-    useState(true);
-  const [loadingBalances, setLoadingBalances] =
-    useState(false);
+  // { balanceId: { field, value } } — only one cell edits at a time.
+  const [editingCell, setEditingCell] = useState(null);
+
+  const [loadingEmployees, setLoadingEmployees] = useState(true);
+  const [loadingBalances, setLoadingBalances] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const [error, setError] = useState("");
@@ -52,14 +53,11 @@ const AdminLeaveBalances = () => {
         const data = await getEmployees();
 
         setEmployees(
-          data.filter(
-            (employee) => employee.status === "active"
-          )
+          data.filter((employee) => employee.status === "active")
         );
-      } catch (error) {
+      } catch (err) {
         setError(
-          error.response?.data?.message ||
-            "Failed to load employees"
+          err.response?.data?.message || "Failed to load employees"
         );
       } finally {
         setLoadingEmployees(false);
@@ -81,31 +79,23 @@ const AdminLeaveBalances = () => {
         setError("");
         setMessage("");
 
-        const data =
-          await getEmployeeLeaveBalances(
-            selectedEmployeeId,
-            year
-          );
+        const data = await getEmployeeLeaveBalances(
+          selectedEmployeeId,
+          year
+        );
 
         setBalances(data);
 
-        const nextForm = {
-          sick: 0,
-          casual: 0,
-          vacation: 0,
-          other: 0,
-        };
+        const nextForm = { sick: 0, casual: 0, vacation: 0, other: 0 };
 
         for (const balance of data) {
-          nextForm[balance.leaveType] =
-            balance.totalAllotted;
+          nextForm[balance.leaveType] = balance.totalAllotted;
         }
 
         setForm(nextForm);
-      } catch (error) {
+      } catch (err) {
         setError(
-          error.response?.data?.message ||
-            "Failed to load leave balances"
+          err.response?.data?.message || "Failed to load leave balances"
         );
       } finally {
         setLoadingBalances(false);
@@ -115,14 +105,8 @@ const AdminLeaveBalances = () => {
     loadBalances();
   }, [selectedEmployeeId, year]);
 
-  const handleFormChange = (
-    leaveType,
-    value
-  ) => {
-    setForm((current) => ({
-      ...current,
-      [leaveType]: value,
-    }));
+  const handleFormChange = (leaveType, value) => {
+    setForm((current) => ({ ...current, [leaveType]: value }));
   };
 
   const handleInitialize = async (event) => {
@@ -138,15 +122,11 @@ const AdminLeaveBalances = () => {
       setError("");
       setMessage("");
 
-      const balanceData = LEAVE_TYPES.map(
-        (leaveType) => ({
-          leaveType,
-          totalAllotted: Number(
-            form[leaveType]
-          ),
-          carriedOver: 0,
-        })
-      );
+      const balanceData = LEAVE_TYPES.map((leaveType) => ({
+        leaveType,
+        totalAllotted: Number(form[leaveType]),
+        carriedOver: 0,
+      }));
 
       await initializeLeaveBalances(
         selectedEmployeeId,
@@ -154,20 +134,16 @@ const AdminLeaveBalances = () => {
         balanceData
       );
 
-      const updated =
-        await getEmployeeLeaveBalances(
-          selectedEmployeeId,
-          year
-        );
+      const updated = await getEmployeeLeaveBalances(
+        selectedEmployeeId,
+        year
+      );
 
       setBalances(updated);
-
-      setMessage(
-        "Leave balances initialized successfully."
-      );
-    } catch (error) {
+      setMessage("Leave balances saved.");
+    } catch (err) {
       setError(
-        error.response?.data?.message ||
+        err.response?.data?.message ||
           "Failed to initialize leave balances"
       );
     } finally {
@@ -175,157 +151,213 @@ const AdminLeaveBalances = () => {
     }
   };
 
-  const handleAdjust = async (
-    balanceId,
-    field,
-    value
-  ) => {
+  const handleAdjust = async (balanceId, field, value) => {
     try {
       setError("");
       setMessage("");
 
-      await adjustLeaveBalance(balanceId, {
-        [field]: Number(value),
-      });
+      await adjustLeaveBalance(balanceId, { [field]: Number(value) });
 
-      const updated =
-        await getEmployeeLeaveBalances(
-          selectedEmployeeId,
-          year
-        );
+      const updated = await getEmployeeLeaveBalances(
+        selectedEmployeeId,
+        year
+      );
 
       setBalances(updated);
-
-      setMessage(
-        "Leave balance updated successfully."
-      );
-    } catch (error) {
+      setEditingCell(null);
+      setMessage("Leave balance updated.");
+    } catch (err) {
       setError(
-        error.response?.data?.message ||
-          "Failed to update leave balance"
+        err.response?.data?.message || "Failed to update leave balance"
       );
     }
   };
 
+  /** Inline-editable number cell — replaces the old window.prompt flow. */
+  const EditableCell = ({ balance, field }) => {
+    const isEditing =
+      editingCell?.id === balance._id && editingCell?.field === field;
+
+    if (isEditing) {
+      return (
+        <div className="flex items-center gap-1.5">
+          <input
+            type="number"
+            min="0"
+            autoFocus
+            className="w-20 rounded-lg border border-coral px-2 py-1 text-sm"
+            value={editingCell.value}
+            onChange={(event) =>
+              setEditingCell({
+                ...editingCell,
+                value: event.target.value,
+              })
+            }
+          />
+          <button
+            type="button"
+            aria-label="Save value"
+            onClick={() =>
+              handleAdjust(balance._id, field, editingCell.value)
+            }
+            className="flex h-7 w-7 items-center justify-center rounded-lg bg-mint text-ink"
+          >
+            <LuCheck size={14} />
+          </button>
+          <button
+            type="button"
+            aria-label="Cancel edit"
+            onClick={() => setEditingCell(null)}
+            className="flex h-7 w-7 items-center justify-center rounded-lg border border-line text-slate"
+          >
+            <LuX size={14} />
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <button
+        type="button"
+        onClick={() =>
+          setEditingCell({
+            id: balance._id,
+            field,
+            value: balance[field],
+          })
+        }
+        className="group inline-flex items-center gap-1.5 rounded-lg px-1.5 py-0.5 transition-colors hover:bg-canvas"
+      >
+        {balance[field]}
+        <LuPencil
+          size={12}
+          className="text-slate opacity-0 transition-opacity group-hover:opacity-100"
+        />
+      </button>
+    );
+  };
+
   if (loadingEmployees) {
-    return <div>Loading employees...</div>;
+    return (
+      <div className="flex h-64 items-center justify-center text-slate">
+        Loading employees...
+      </div>
+    );
   }
 
   return (
     <div>
-      <h1>Leave Balance Management</h1>
+      <PageHeader
+        title="Leave Balance Management"
+        subtitle="Set allotments and correct balances for a leave cycle."
+      />
 
-      {error && <p>{error}</p>}
-      {message && <p>{message}</p>}
+      <Alert tone="error">{error}</Alert>
+      <Alert tone="success">{message}</Alert>
 
-      <div>
-        <label htmlFor="employee">
-          Employee
-        </label>
+      <Card className="mb-6">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="sm:col-span-2">
+            <Field label="Employee" htmlFor="employee">
+              <select
+                id="employee"
+                className="field-input"
+                value={selectedEmployeeId}
+                onChange={(event) =>
+                  setSelectedEmployeeId(event.target.value)
+                }
+              >
+                <option value="">Select employee</option>
+                {employees.map((employee) => (
+                  <option key={employee._id} value={employee._id}>
+                    {employee.name} — {employee.email}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
 
-        <select
-          id="employee"
-          value={selectedEmployeeId}
-          onChange={(event) =>
-            setSelectedEmployeeId(
-              event.target.value
-            )
-          }
-        >
-          <option value="">
-            Select employee
-          </option>
+          <Field label="Cycle year" htmlFor="year">
+            <input
+              id="year"
+              type="number"
+              min="2000"
+              max="2100"
+              className="field-input"
+              value={year}
+              onChange={(event) => setYear(event.target.value)}
+            />
+          </Field>
+        </div>
+      </Card>
 
-          {employees.map((employee) => (
-            <option
-              key={employee._id}
-              value={employee._id}
-            >
-              {employee.name} — {employee.email}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div>
-        <label htmlFor="year">
-          Cycle Year
-        </label>
-
-        <input
-          id="year"
-          type="number"
-          min="2000"
-          max="2100"
-          value={year}
-          onChange={(event) =>
-            setYear(event.target.value)
-          }
+      {!selectedEmployeeId ? (
+        <EmptyState
+          title="Pick an employee to begin"
+          hint="Choose someone above to view or set their leave balances."
         />
-      </div>
-
-      {selectedEmployeeId && (
-        <>
-          <h2>Initialize / Update Allotted Days</h2>
-
-          <form onSubmit={handleInitialize}>
-            {LEAVE_TYPES.map((leaveType) => (
-              <div key={leaveType}>
-                <label htmlFor={leaveType}>
-                  {leaveType}
-                </label>
-
-                <input
-                  id={leaveType}
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={form[leaveType]}
-                  onChange={(event) =>
-                    handleFormChange(
-                      leaveType,
-                      event.target.value
-                    )
-                  }
-                />
+      ) : (
+        <div className="space-y-6">
+          <Card
+            title="Allotted days"
+            description="Sets the base allotment for each leave type in this cycle."
+          >
+            <form onSubmit={handleInitialize}>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                {LEAVE_TYPES.map((leaveType) => (
+                  <Field
+                    key={leaveType}
+                    label={
+                      leaveType.charAt(0).toUpperCase() + leaveType.slice(1)
+                    }
+                    htmlFor={leaveType}
+                  >
+                    <input
+                      id={leaveType}
+                      type="number"
+                      min="0"
+                      step="1"
+                      className="field-input"
+                      value={form[leaveType]}
+                      onChange={(event) =>
+                        handleFormChange(leaveType, event.target.value)
+                      }
+                    />
+                  </Field>
+                ))}
               </div>
-            ))}
 
-            <button
-              type="submit"
-              disabled={saving}
-            >
-              {saving
-                ? "Saving..."
-                : "Initialize Balances"}
-            </button>
-          </form>
+              <button
+                type="submit"
+                disabled={saving}
+                className="btn-primary mt-5"
+              >
+                {saving ? "Saving..." : "Save allotments"}
+              </button>
+            </form>
+          </Card>
 
-          <h2>
-            Current Balances
-          </h2>
-
-          {loadingBalances ? (
-            <p>Loading balances...</p>
-          ) : balances.length === 0 ? (
-            <p>
-              No balances initialized for{" "}
-              {year}.
-            </p>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Type</th>
-                  <th>Allotted</th>
-                  <th>Carried Over</th>
-                  <th>Used</th>
-                  <th>Available</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-
-              <tbody>
+          <Card
+            title="Current balances"
+            description="Click any number to correct it."
+          >
+            {loadingBalances ? (
+              <p className="text-slate">Loading balances...</p>
+            ) : balances.length === 0 ? (
+              <p className="text-slate">
+                No balances initialized for {year} yet. Save allotments above
+                to create them.
+              </p>
+            ) : (
+              <Table
+                head={[
+                  "Type",
+                  "Allotted",
+                  "Carried over",
+                  "Used",
+                  "Available",
+                ]}
+              >
                 {balances.map((balance) => {
                   const available =
                     balance.totalAllotted +
@@ -334,101 +366,34 @@ const AdminLeaveBalances = () => {
 
                   return (
                     <tr key={balance._id}>
-                      <td>
+                      <Td className="font-medium capitalize">
                         {balance.leaveType}
-                      </td>
-
-                      <td>
-                        {balance.totalAllotted}
-                      </td>
-
-                      <td>
-                        {balance.carriedOver}
-                      </td>
-
-                      <td>
-                        {balance.used}
-                      </td>
-
-                      <td>{available}</td>
-
-                      <td>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const value =
-                              window.prompt(
-                                "New allotted days:",
-                                balance.totalAllotted
-                              );
-
-                            if (
-                              value !== null
-                            ) {
-                              handleAdjust(
-                                balance._id,
-                                "totalAllotted",
-                                value
-                              );
-                            }
-                          }}
-                        >
-                          Adjust Allotted
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const value =
-                              window.prompt(
-                                "New carried-over days:",
-                                balance.carriedOver
-                              );
-
-                            if (
-                              value !== null
-                            ) {
-                              handleAdjust(
-                                balance._id,
-                                "carriedOver",
-                                value
-                              );
-                            }
-                          }}
-                        >
-                          Adjust Carried Over
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const value =
-                              window.prompt(
-                                "New used days:",
-                                balance.used
-                              );
-
-                            if (
-                              value !== null
-                            ) {
-                              handleAdjust(
-                                balance._id,
-                                "used",
-                                value
-                              );
-                            }
-                          }}
-                        >
-                          Adjust Used
-                        </button>
-                      </td>
+                      </Td>
+                      <Td>
+                        <EditableCell
+                          balance={balance}
+                          field="totalAllotted"
+                        />
+                      </Td>
+                      <Td>
+                        <EditableCell
+                          balance={balance}
+                          field="carriedOver"
+                        />
+                      </Td>
+                      <Td>
+                        <EditableCell balance={balance} field="used" />
+                      </Td>
+                      <Td className="font-display font-semibold">
+                        {available}
+                      </Td>
                     </tr>
                   );
                 })}
-              </tbody>
-            </table>
-          )}
-        </>
+              </Table>
+            )}
+          </Card>
+        </div>
       )}
     </div>
   );

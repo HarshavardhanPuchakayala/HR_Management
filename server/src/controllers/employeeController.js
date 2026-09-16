@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
-
+import bcrypt from "bcryptjs";
 import Employee from "../models/Employee.js";
+import User from "../models/User.js";
 import { createRateLimiter } from "../middleware/rateLimit.js";
 import {
   getCachedDirectory,
@@ -13,7 +14,9 @@ const isValidObjectId = (value) =>
   mongoose.Types.ObjectId.isValid(value);
 
 const wouldCreateCycle = async (employeeId, managerId) => {
-  if (employeeId.toString() === managerId.toString()) return true;
+  if (employeeId.toString() === managerId.toString()) {
+    return true;
+  }
 
   const visited = new Set();
   let currentId = managerId;
@@ -21,16 +24,22 @@ const wouldCreateCycle = async (employeeId, managerId) => {
   while (currentId) {
     const currentIdString = currentId.toString();
 
-    if (visited.has(currentIdString)) return true;
+    if (visited.has(currentIdString)) {
+      return true;
+    }
 
     visited.add(currentIdString);
 
-    if (currentIdString === employeeId.toString()) return true;
+    if (currentIdString === employeeId.toString()) {
+      return true;
+    }
 
     const manager = await Employee.findById(currentId)
       .select("managerId");
 
-    if (!manager) return false;
+    if (!manager) {
+      return false;
+    }
 
     currentId = manager.managerId;
   }
@@ -44,6 +53,21 @@ const createEmployeeLimiter = createRateLimiter({
   windowSeconds: 3600,
 });
 
+/*
+ * Remove sensitive fields before sending employee data
+ * to the frontend.
+ */
+const sanitizeEmployee = (employee) => {
+  const object =
+    typeof employee.toObject === "function"
+      ? employee.toObject()
+      : employee;
+
+  delete object.password;
+
+  return object;
+};
+
 export const createEmployee = async (req, res) => {
   try {
     const {
@@ -53,107 +77,238 @@ export const createEmployee = async (req, res) => {
       jobTitle,
       department,
       managerId,
+      password,
     } = req.body;
 
-    if (!name || !email || !jobTitle || !department) {
+    /*
+     * Validate required employee information.
+     */
+    if (
+      !name ||
+      !email ||
+      !jobTitle ||
+      !department ||
+      !password
+    ) {
       return res.status(400).json({
         message:
-          "name, email, jobTitle and department are required",
+          "Name, email, job title, department and password are required.",
       });
     }
 
+    /*
+     * Validate password.
+     */
+    if (typeof password !== "string") {
+      return res.status(400).json({
+        message: "Password must be a valid string.",
+      });
+    }
+
+    if (password.length < 8) {
+      return res.status(400).json({
+        message:
+          "Password must be at least 8 characters long.",
+      });
+    }
+
+    /*
+     * Validate manager ID when supplied.
+     */
     if (
-      managerId !== undefined &&
-      managerId !== null &&
+      managerId &&
       !isValidObjectId(managerId)
     ) {
       return res.status(400).json({
-        message: "Invalid manager ID",
+        message: "Invalid manager.",
       });
     }
 
+    /*
+     * Normalize email.
+     */
     const normalizedEmail = String(email)
       .trim()
       .toLowerCase();
 
-    if (!normalizedEmail || normalizedEmail.length > 254) {
-      return res.status(400).json({
-        message: "Invalid email",
-      });
-    }
+    /*
+     * Rate limit employee creation.
+     */
+    const rateLimitKey =
+      req.user?._id?.toString() ||
+      req.ip ||
+      "unknown";
 
-    const adminId = req.user._id.toString();
-    const allowed = await createEmployeeLimiter.check(adminId);
+    const rateLimitAllowed =
+      await createEmployeeLimiter.check(
+        rateLimitKey
+      );
 
-    if (!allowed) {
+    if (!rateLimitAllowed) {
       return res.status(429).json({
         message:
           "Too many employee creation attempts. Please try again later.",
       });
     }
 
-    if (managerId) {
-      const manager = await Employee.findById(managerId);
+    /*
+     * Check whether an employee already exists.
+     */
+    const existingEmployee =
+      await Employee.findOne({
+        email: normalizedEmail,
+      });
 
-      if (!manager || manager.status !== "active") {
+    if (existingEmployee) {
+      return res.status(409).json({
+        message:
+          "An employee with this email already exists.",
+      });
+    }
+
+    /*
+     * Also check User collection.
+     *
+     * This is important because login accounts
+     * are stored separately from Employee records.
+     */
+    const existingUser =
+      await User.findOne({
+        email: normalizedEmail,
+      });
+
+    if (existingUser) {
+      return res.status(409).json({
+        message:
+          "A login account with this email already exists.",
+      });
+    }
+
+    /*
+     * Validate manager.
+     */
+    if (managerId) {
+      const manager =
+        await Employee.findById(managerId);
+
+      if (!manager) {
         return res.status(400).json({
-          message: "Invalid manager",
+          message: "Manager not found.",
+        });
+      }
+
+      if (manager.status !== "active") {
+        return res.status(400).json({
+          message:
+            "The selected manager is inactive.",
         });
       }
     }
 
-    const existingEmployee = await Employee.findOne({
-      email: normalizedEmail,
-    });
+    /*
+     * Hash the login password.
+     *
+     * IMPORTANT:
+     * The plain password is never stored in MongoDB.
+     */
+    const passwordHash =
+      await bcrypt.hash(password, 12);
 
-    if (existingEmployee) {
-      return res.status(409).json({
-        message: "Employee with this email already exists",
+    /*
+     * Create Employee first.
+     */
+    const employee =
+      await Employee.create({
+        name: String(name).trim(),
+        email: normalizedEmail,
+        phone: phone
+          ? String(phone).trim()
+          : "",
+        jobTitle: String(jobTitle).trim(),
+        department: String(department).trim(),
+        managerId: managerId || null,
+        status: "active",
       });
+
+    try {
+      /*
+       * Create the actual login account.
+       */
+      await User.create({
+        employeeId: employee._id,
+        email: normalizedEmail,
+        passwordHash,
+        role: "employee",
+      });
+    } catch (userError) {
+      /*
+       * If User creation fails, remove the Employee
+       * so we don't leave an employee without login.
+       */
+      await Employee.findByIdAndDelete(
+        employee._id
+      );
+
+      throw userError;
     }
 
-    const employee = await Employee.create({
-      name: String(name).trim(),
-      email: normalizedEmail,
-      phone,
-      jobTitle: String(jobTitle).trim(),
-      department: String(department).trim(),
-      managerId: managerId || null,
-      status: "active",
-    });
+    /*
+     * Record rate-limit attempt.
+     */
+    await createEmployeeLimiter.record(
+      rateLimitKey
+    );
 
-    await createEmployeeLimiter.record(adminId);
+    /*
+     * Clear employee directory cache.
+     */
     await invalidateDirectoryCache();
 
+    /*
+     * Audit log.
+     */
     await createAuditLog({
       req,
       action: "CREATE",
       entityType: "Employee",
       entityId: employee._id,
+      details: {
+        name: employee.name,
+        email: employee.email,
+      },
     });
 
-    return res.status(201).json(employee);
+    return res.status(201).json({
+      message:
+        "Employee and login account created successfully.",
+      employee,
+    });
   } catch (error) {
-    console.error("Create employee error:", error);
+    console.error(
+      "Create employee error:",
+      error
+    );
 
-    if (error.name === "ValidationError") {
-      return res.status(400).json({
-        message: "Invalid employee data",
-      });
-    }
-
-    if (error.code === 11000) {
+    /*
+     * Handle duplicate MongoDB keys.
+     */
+    if (error?.code === 11000) {
       return res.status(409).json({
-        message: "Employee with this email already exists",
+        message:
+          "An employee or login account with this email already exists.",
       });
     }
 
     return res.status(500).json({
-      message: "Failed to create employee",
+      message:
+        "Failed to create employee.",
     });
   }
 };
 
+/*
+ * UPDATE EMPLOYEE
+ */
 export const updateEmployee = async (req, res) => {
   try {
     const { employeeId } = req.params;
@@ -184,6 +339,9 @@ export const updateEmployee = async (req, res) => {
       });
     }
 
+    /*
+     * Validate manager.
+     */
     if (managerId !== undefined && managerId !== null) {
       const manager = await Employee.findById(managerId);
 
@@ -193,7 +351,12 @@ export const updateEmployee = async (req, res) => {
         });
       }
 
-      if (await wouldCreateCycle(employeeId, managerId)) {
+      if (
+        await wouldCreateCycle(
+          employeeId,
+          managerId
+        )
+      ) {
         return res.status(400).json({
           message:
             "Invalid manager assignment: would create a reporting cycle",
@@ -201,6 +364,9 @@ export const updateEmployee = async (req, res) => {
       }
     }
 
+    /*
+     * Validate email.
+     */
     if (req.body.email !== undefined) {
       const normalizedEmail = String(req.body.email)
         .trim()
@@ -212,20 +378,28 @@ export const updateEmployee = async (req, res) => {
         });
       }
 
-      const existingEmployee = await Employee.findOne({
-        email: normalizedEmail,
-        _id: { $ne: employeeId },
-      });
+      const existingEmployee =
+        await Employee.findOne({
+          email: normalizedEmail,
+          _id: { $ne: employeeId },
+        });
 
       if (existingEmployee) {
         return res.status(409).json({
-          message: "Employee with this email already exists",
+          message:
+            "Employee with this email already exists",
         });
       }
 
       req.body.email = normalizedEmail;
     }
 
+    /*
+     * Only these fields can be changed through the
+     * normal employee update endpoint.
+     *
+     * Password is intentionally NOT included.
+     */
     const allowedFields = [
       "name",
       "email",
@@ -245,6 +419,7 @@ export const updateEmployee = async (req, res) => {
     }
 
     await employee.save();
+
     await invalidateDirectoryCache();
 
     await createAuditLog({
@@ -254,7 +429,9 @@ export const updateEmployee = async (req, res) => {
       entityId: employee._id,
     });
 
-    return res.json(employee);
+    return res.json(
+      sanitizeEmployee(employee)
+    );
   } catch (error) {
     console.error("Update employee error:", error);
 
@@ -266,7 +443,8 @@ export const updateEmployee = async (req, res) => {
 
     if (error.code === 11000) {
       return res.status(409).json({
-        message: "Employee with this email already exists",
+        message:
+          "Employee with this email already exists",
       });
     }
 
@@ -276,6 +454,9 @@ export const updateEmployee = async (req, res) => {
   }
 };
 
+/*
+ * DEACTIVATE EMPLOYEE
+ */
 export const deleteEmployee = async (req, res) => {
   try {
     const { employeeId } = req.params;
@@ -286,7 +467,9 @@ export const deleteEmployee = async (req, res) => {
       });
     }
 
-    const employee = await Employee.findById(employeeId);
+    const employee = await Employee.findById(
+      employeeId
+    );
 
     if (!employee) {
       return res.status(404).json({
@@ -297,6 +480,7 @@ export const deleteEmployee = async (req, res) => {
     employee.status = "inactive";
 
     await employee.save();
+
     await invalidateDirectoryCache();
 
     await createAuditLog({
@@ -307,29 +491,46 @@ export const deleteEmployee = async (req, res) => {
     });
 
     return res.json({
-      message: "Employee deactivated successfully",
-      employee,
+      message:
+        "Employee deactivated successfully",
+
+      employee: sanitizeEmployee(employee),
     });
   } catch (error) {
-    console.error("Deactivate employee error:", error);
+    console.error(
+      "Deactivate employee error:",
+      error
+    );
 
     return res.status(500).json({
-      message: "Failed to deactivate employee",
+      message:
+        "Failed to deactivate employee",
     });
   }
 };
 
+/*
+ * GET ALL EMPLOYEES
+ */
 export const getEmployees = async (req, res) => {
   try {
     let employees = await getCachedDirectory();
 
     if (employees) {
-      console.log("Employee directory: CACHE HIT");
+      console.log(
+        "Employee directory: CACHE HIT"
+      );
     } else {
-      console.log("Employee directory: CACHE MISS");
+      console.log(
+        "Employee directory: CACHE MISS"
+      );
 
       employees = await Employee.find({})
-        .populate("managerId", "name email jobTitle")
+        .select("-password")
+        .populate(
+          "managerId",
+          "name email jobTitle"
+        )
         .sort({ name: 1 });
 
       await setCachedDirectory(employees);
@@ -338,13 +539,17 @@ export const getEmployees = async (req, res) => {
     const filtered = req.query.department
       ? employees.filter(
           (employee) =>
-            employee.department === req.query.department
+            employee.department ===
+            req.query.department
         )
       : employees;
 
     return res.json(filtered);
   } catch (error) {
-    console.error("Get employees error:", error);
+    console.error(
+      "Get employees error:",
+      error
+    );
 
     return res.status(500).json({
       message: "Failed to fetch employees",
@@ -352,6 +557,9 @@ export const getEmployees = async (req, res) => {
   }
 };
 
+/*
+ * GET SINGLE EMPLOYEE
+ */
 export const getEmployee = async (req, res) => {
   try {
     const { employeeId } = req.params;
@@ -362,7 +570,10 @@ export const getEmployee = async (req, res) => {
       });
     }
 
-    const employee = await Employee.findById(employeeId)
+    const employee = await Employee.findById(
+      employeeId
+    )
+      .select("-password")
       .populate(
         "managerId",
         "name email jobTitle department"
@@ -376,7 +587,10 @@ export const getEmployee = async (req, res) => {
 
     return res.json(employee);
   } catch (error) {
-    console.error("Get employee error:", error);
+    console.error(
+      "Get employee error:",
+      error
+    );
 
     return res.status(500).json({
       message: "Failed to fetch employee",
@@ -384,7 +598,13 @@ export const getEmployee = async (req, res) => {
   }
 };
 
-export const getDirectReports = async (req, res) => {
+/*
+ * GET DIRECT REPORTS
+ */
+export const getDirectReports = async (
+  req,
+  res
+) => {
   try {
     const { employeeId } = req.params;
 
@@ -394,7 +614,9 @@ export const getDirectReports = async (req, res) => {
       });
     }
 
-    const employee = await Employee.findById(employeeId);
+    const employee = await Employee.findById(
+      employeeId
+    );
 
     if (!employee) {
       return res.status(404).json({
@@ -404,14 +626,137 @@ export const getDirectReports = async (req, res) => {
 
     const reports = await Employee.find({
       managerId: employeeId,
-    }).sort({ name: 1 });
+    })
+      .select("-password")
+      .sort({ name: 1 });
 
     return res.json(reports);
   } catch (error) {
-    console.error("Get direct reports error:", error);
+    console.error(
+      "Get direct reports error:",
+      error
+    );
 
     return res.status(500).json({
       message: "Failed to fetch direct reports",
+    });
+  }
+};
+
+/*
+ * EMPLOYEE VIEWS THEIR OWN PROFILE
+ */
+export const getMyProfile = async (
+  req,
+  res
+) => {
+  try {
+    const employee = await Employee.findById(
+      req.user.employeeId
+    ).populate(
+      "managerId",
+      "name email jobTitle department"
+    );
+
+    if (!employee) {
+      return res.status(404).json({
+        message:
+          "Employee record not found",
+      });
+    }
+
+    return res.json(
+      sanitizeEmployee(employee)
+    );
+  } catch (error) {
+    console.error(
+      "Get my profile error:",
+      error
+    );
+
+    return res.status(500).json({
+      message:
+        "Failed to fetch your profile",
+    });
+  }
+};
+
+/*
+ * EMPLOYEE UPDATES THEIR OWN PROFILE
+ *
+ * Intentionally narrow: only self-editable fields
+ * (currently just phone) are allowed here. Name, email,
+ * jobTitle, department, and managerId stay admin-only
+ * (via updateEmployee) since they're directory/org-chart
+ * integrity fields, not personal details.
+ */
+export const updateMyProfile = async (
+  req,
+  res
+) => {
+  try {
+    const employee = await Employee.findById(
+      req.user.employeeId
+    );
+
+    if (!employee) {
+      return res.status(404).json({
+        message:
+          "Employee record not found",
+      });
+    }
+
+    const { phone } = req.body;
+
+    if (phone === undefined) {
+      return res.status(400).json({
+        message:
+          "No editable fields were provided",
+      });
+    }
+
+    if (
+      typeof phone !== "string" ||
+      phone.length > 30
+    ) {
+      return res.status(400).json({
+        message: "Invalid phone number",
+      });
+    }
+
+    employee.phone = phone.trim();
+
+    await employee.save();
+
+    await invalidateDirectoryCache();
+
+    await createAuditLog({
+      req,
+      action: "UPDATE_PROFILE",
+      entityType: "Employee",
+      entityId: employee._id,
+    });
+
+    return res.json(
+      sanitizeEmployee(employee)
+    );
+  } catch (error) {
+    console.error(
+      "Update my profile error:",
+      error
+    );
+
+    if (
+      error.name === "ValidationError"
+    ) {
+      return res.status(400).json({
+        message: "Invalid profile data",
+      });
+    }
+
+    return res.status(500).json({
+      message:
+        "Failed to update your profile",
     });
   }
 };

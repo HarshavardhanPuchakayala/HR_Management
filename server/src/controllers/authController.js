@@ -55,6 +55,28 @@ const createUserLimiter = createRateLimiter({
   windowSeconds: 3600,
 });
 
+const resetPasswordLimiter = createRateLimiter({
+  keyPrefix: "reset-password",
+  maxAttempts: 20,
+  windowSeconds: 3600,
+});
+
+const generateTemporaryPassword = (length = 10) => {
+  // Characters that can easily be confused, such as 0/O and 1/l/I, are avoided.
+  const characters =
+    "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789@#$%";
+
+  let password = "";
+
+  for (let i = 0; i < length; i++) {
+    password += characters.charAt(
+      Math.floor(Math.random() * characters.length)
+    );
+  }
+
+  return password;
+};
+
 export const createUserAccount = async (
   req,
   res
@@ -343,6 +365,178 @@ export const getMe = async (
     return res.status(500).json({
       message:
         "Failed to fetch current user",
+    });
+  }
+};
+
+/*
+ * EMPLOYEE/USER CHANGES THEIR OWN LOGIN PASSWORD
+ *
+ * Operates on User.passwordHash, since that is where
+ * login credentials actually live. Employee records have
+ * no password field.
+ */
+export const changeMyPassword = async (
+  req,
+  res
+) => {
+  try {
+    const {
+      currentPassword,
+      newPassword,
+    } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        message:
+          "Current password and new password are required",
+      });
+    }
+
+    if (
+      typeof newPassword !== "string" ||
+      newPassword.length < 8 ||
+      newPassword.length > 128
+    ) {
+      return res.status(400).json({
+        message:
+          "New password must be between 8 and 128 characters",
+      });
+    }
+
+    const user = await User.findById(
+      req.user._id
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found",
+      });
+    }
+
+    const passwordCorrect =
+      await bcrypt.compare(
+        currentPassword,
+        user.passwordHash
+      );
+
+    if (!passwordCorrect) {
+      return res.status(401).json({
+        message:
+          "Current password is incorrect",
+      });
+    }
+
+    user.passwordHash =
+      await bcrypt.hash(newPassword, 12);
+
+    await user.save();
+
+    await createAuditLog({
+      req,
+      action: "CHANGE_PASSWORD",
+      entityType: "User",
+      entityId: user._id,
+    });
+
+    return res.json({
+      message: "Password changed successfully",
+    });
+  } catch (error) {
+    console.error(
+      "Change password error:",
+      error
+    );
+
+    return res.status(500).json({
+      message: "Failed to change password",
+    });
+  }
+};
+
+/*
+ * ADMIN RESETS AN EMPLOYEE'S LOGIN PASSWORD
+ *
+ * Looked up by employeeId since that is how admins identify
+ * people, but the reset is applied to the linked User account
+ * (User.passwordHash), which is the actual login credential.
+ */
+export const resetUserPassword = async (
+  req,
+  res
+) => {
+  try {
+    const { employeeId } = req.params;
+
+    if (
+      !mongoose.Types.ObjectId.isValid(
+        employeeId
+      )
+    ) {
+      return res.status(400).json({
+        message: "Invalid employee ID",
+      });
+    }
+
+    const allowed =
+      await resetPasswordLimiter.check(
+        req.user._id.toString()
+      );
+
+    if (!allowed) {
+      return res.status(429).json({
+        message:
+          "Too many password reset attempts. Please try again later.",
+      });
+    }
+
+    const user = await User.findOne({
+      employeeId,
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        message:
+          "No login account exists for this employee",
+      });
+    }
+
+    const temporaryPassword =
+      generateTemporaryPassword();
+
+    user.passwordHash =
+      await bcrypt.hash(
+        temporaryPassword,
+        12
+      );
+
+    await user.save();
+
+    await resetPasswordLimiter.record(
+      req.user._id.toString()
+    );
+
+    await createAuditLog({
+      req,
+      action: "RESET_PASSWORD",
+      entityType: "User",
+      entityId: user._id,
+    });
+
+    return res.json({
+      message:
+        "Password reset successfully",
+      temporaryPassword,
+    });
+  } catch (error) {
+    console.error(
+      "Reset user password error:",
+      error
+    );
+
+    return res.status(500).json({
+      message:
+        "Failed to reset password",
     });
   }
 };

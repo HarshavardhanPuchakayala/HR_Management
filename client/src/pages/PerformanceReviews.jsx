@@ -1,6 +1,5 @@
-
 import { useEffect, useState } from "react";
-
+import { LuStar, LuPlus } from "react-icons/lu";
 import {
   getReviewCycles,
   createReviewCycle,
@@ -13,10 +12,39 @@ import {
   updatePerformanceReview,
   submitPerformanceReview,
 } from "../api/performanceReviews.js";
-
 import { getEmployees } from "../api/employees.js";
-
 import { useAuth } from "../context/AuthContext.jsx";
+import {
+  PageHeader,
+  Alert,
+  Card,
+  Field,
+  StatusPill,
+  EmptyState,
+} from "../components/Ui.jsx";
+
+/** Rating shown as filled stars rather than a bare number. */
+const Rating = ({ value }) => {
+  if (value === null || value === undefined || value === "") {
+    return <span className="text-sm text-slate">Not rated</span>;
+  }
+
+  return (
+    <span className="flex items-center gap-0.5" aria-label={`${value} out of 5`}>
+      {[1, 2, 3, 4, 5].map((step) => (
+        <LuStar
+          key={step}
+          size={15}
+          className={
+            step <= Number(value)
+              ? "fill-amber text-amber"
+              : "text-line"
+          }
+        />
+      ))}
+    </span>
+  );
+};
 
 const PerformanceReviews = () => {
   const { user } = useAuth();
@@ -42,8 +70,7 @@ const PerformanceReviews = () => {
     employeeId: "",
   });
 
-  const [editingReviewId, setEditingReviewId] =
-    useState(null);
+  const [editingReviewId, setEditingReviewId] = useState(null);
 
   const [editForm, setEditForm] = useState({
     rating: "",
@@ -52,8 +79,7 @@ const PerformanceReviews = () => {
     goals: "",
   });
 
-  const [employeeComments, setEmployeeComments] =
-    useState({});
+  const [employeeComments, setEmployeeComments] = useState({});
 
   const loadData = async () => {
     try {
@@ -62,31 +88,21 @@ const PerformanceReviews = () => {
 
       const cycleData = await getReviewCycles();
 
-      setCycles(
-        Array.isArray(cycleData) ? cycleData : []
-      );
+      setCycles(Array.isArray(cycleData) ? cycleData : []);
 
       if (role === "admin") {
-        const reviewData =
-          await getAllPerformanceReviews();
+        const reviewData = await getAllPerformanceReviews();
 
-        setReviews(
-          Array.isArray(reviewData)
-            ? reviewData
-            : []
-        );
+        setReviews(Array.isArray(reviewData) ? reviewData : []);
       }
 
       if (role === "manager") {
-        const [reviewData, employeeData] =
-          await Promise.all([
-            getTeamPerformanceReviews(),
-            getEmployees(),
-          ]);
+        const [reviewData, employeeData] = await Promise.all([
+          getTeamPerformanceReviews(),
+          getEmployees(),
+        ]);
 
-        const allEmployees = Array.isArray(
-          employeeData
-        )
+        const allEmployees = Array.isArray(employeeData)
           ? employeeData
           : [];
 
@@ -94,43 +110,28 @@ const PerformanceReviews = () => {
          * This filter only controls the UI selection.
          * The backend remains responsible for authorization.
          */
-        const directReports = allEmployees.filter(
-          (employee) => {
-            if (!employee.managerId) {
-              return false;
-            }
+        const directReports = allEmployees.filter((employee) => {
+          if (!employee.managerId) return false;
 
-            const managerId =
-              typeof employee.managerId === "object"
-                ? employee.managerId._id
-                : employee.managerId;
+          const managerId =
+            typeof employee.managerId === "object"
+              ? employee.managerId._id
+              : employee.managerId;
 
-            return (
-              managerId?.toString() ===
-                user.employeeId?.toString() &&
-              employee.status === "active"
-            );
-          }
-        );
+          return (
+            managerId?.toString() === user.employeeId?.toString() &&
+            employee.status === "active"
+          );
+        });
 
         setEmployees(directReports);
-
-        setReviews(
-          Array.isArray(reviewData)
-            ? reviewData
-            : []
-        );
+        setReviews(Array.isArray(reviewData) ? reviewData : []);
       }
 
       if (role === "employee") {
-        const reviewData =
-          await getMyPerformanceReviews();
+        const reviewData = await getMyPerformanceReviews();
 
-        setReviews(
-          Array.isArray(reviewData)
-            ? reviewData
-            : []
-        );
+        setReviews(Array.isArray(reviewData) ? reviewData : []);
       }
     } catch (err) {
       setError(
@@ -151,10 +152,7 @@ const PerformanceReviews = () => {
   const handleCycleChange = (event) => {
     const { name, value } = event.target;
 
-    setCycleForm((previous) => ({
-      ...previous,
-      [name]: value,
-    }));
+    setCycleForm((previous) => ({ ...previous, [name]: value }));
   };
 
   const handleCreateCycle = async (event) => {
@@ -166,21 +164,13 @@ const PerformanceReviews = () => {
 
       await createReviewCycle(cycleForm);
 
-      setCycleForm({
-        name: "",
-        startDate: "",
-        endDate: "",
-      });
-
-      setMessage(
-        "Review cycle created successfully."
-      );
+      setCycleForm({ name: "", startDate: "", endDate: "" });
+      setMessage("Review cycle created.");
 
       await loadData();
     } catch (err) {
       setError(
-        err.response?.data?.message ||
-          "Failed to create review cycle"
+        err.response?.data?.message || "Failed to create review cycle"
       );
     }
   };
@@ -197,8 +187,7 @@ const PerformanceReviews = () => {
       await loadData();
     } catch (err) {
       setError(
-        err.response?.data?.message ||
-          "Failed to activate review cycle"
+        err.response?.data?.message || "Failed to activate review cycle"
       );
     }
   };
@@ -215,8 +204,7 @@ const PerformanceReviews = () => {
       await loadData();
     } catch (err) {
       setError(
-        err.response?.data?.message ||
-          "Failed to complete review cycle"
+        err.response?.data?.message || "Failed to complete review cycle"
       );
     }
   };
@@ -224,10 +212,7 @@ const PerformanceReviews = () => {
   const handleReviewFormChange = (event) => {
     const { name, value } = event.target;
 
-    setReviewForm((previous) => ({
-      ...previous,
-      [name]: value,
-    }));
+    setReviewForm((previous) => ({ ...previous, [name]: value }));
   };
 
   const handleCreateReview = async (event) => {
@@ -239,14 +224,8 @@ const PerformanceReviews = () => {
 
       await createPerformanceReview(reviewForm);
 
-      setReviewForm({
-        cycleId: "",
-        employeeId: "",
-      });
-
-      setMessage(
-        "Performance review created successfully."
-      );
+      setReviewForm({ cycleId: "", employeeId: "" });
+      setMessage("Performance review created.");
 
       await loadData();
     } catch (err) {
@@ -262,13 +241,11 @@ const PerformanceReviews = () => {
 
     setEditForm({
       rating:
-        review.rating === null ||
-        review.rating === undefined
+        review.rating === null || review.rating === undefined
           ? ""
           : review.rating,
       strengths: review.strengths || "",
-      areasForImprovement:
-        review.areasForImprovement || "",
+      areasForImprovement: review.areasForImprovement || "",
       goals: review.goals || "",
     });
 
@@ -290,10 +267,7 @@ const PerformanceReviews = () => {
   const handleEditChange = (event) => {
     const { name, value } = event.target;
 
-    setEditForm((previous) => ({
-      ...previous,
-      [name]: value,
-    }));
+    setEditForm((previous) => ({ ...previous, [name]: value }));
   };
 
   const handleSaveReview = async (id) => {
@@ -303,8 +277,7 @@ const PerformanceReviews = () => {
 
       const payload = {
         strengths: editForm.strengths,
-        areasForImprovement:
-          editForm.areasForImprovement,
+        areasForImprovement: editForm.areasForImprovement,
         goals: editForm.goals,
       };
 
@@ -314,9 +287,7 @@ const PerformanceReviews = () => {
 
       await updatePerformanceReview(id, payload);
 
-      setMessage(
-        "Performance review updated successfully."
-      );
+      setMessage("Performance review updated.");
 
       cancelEditing();
 
@@ -336,9 +307,7 @@ const PerformanceReviews = () => {
 
       await submitPerformanceReview(id);
 
-      setMessage(
-        "Performance review submitted successfully."
-      );
+      setMessage("Performance review submitted.");
 
       await loadData();
     } catch (err) {
@@ -349,14 +318,8 @@ const PerformanceReviews = () => {
     }
   };
 
-  const handleEmployeeCommentChange = (
-    reviewId,
-    value
-  ) => {
-    setEmployeeComments((previous) => ({
-      ...previous,
-      [reviewId]: value,
-    }));
+  const handleEmployeeCommentChange = (reviewId, value) => {
+    setEmployeeComments((previous) => ({ ...previous, [reviewId]: value }));
   };
 
   const handleAcknowledgeReview = async (id) => {
@@ -365,8 +328,7 @@ const PerformanceReviews = () => {
       setError("");
 
       await updatePerformanceReview(id, {
-        employeeComments:
-          employeeComments[id] || "",
+        employeeComments: employeeComments[id] || "",
       });
 
       setEmployeeComments((previous) => {
@@ -375,9 +337,7 @@ const PerformanceReviews = () => {
         return next;
       });
 
-      setMessage(
-        "Performance review acknowledged successfully."
-      );
+      setMessage("Performance review acknowledged.");
 
       await loadData();
     } catch (err) {
@@ -389,725 +349,426 @@ const PerformanceReviews = () => {
   };
 
   const getEmployeeName = (employeeId) => {
-    if (!employeeId) {
-      return "Unknown employee";
-    }
+    if (!employeeId) return "Unknown employee";
 
     if (typeof employeeId === "object") {
-      return (
-        employeeId.name ||
-        employeeId.email ||
-        "Unknown employee"
-      );
+      return employeeId.name || employeeId.email || "Unknown employee";
     }
 
     const employee = employees.find(
-      (item) =>
-        item._id?.toString() ===
-        employeeId?.toString()
+      (item) => item._id?.toString() === employeeId?.toString()
     );
 
     return employee?.name || employeeId;
   };
 
   const formatDate = (date) => {
-    if (!date) {
-      return "-";
-    }
+    if (!date) return "-";
 
     const parsedDate = new Date(date);
 
-    if (Number.isNaN(parsedDate.getTime())) {
-      return "-";
-    }
+    if (Number.isNaN(parsedDate.getTime())) return "-";
 
     return parsedDate.toLocaleDateString();
   };
 
-  const getCycleById = (cycleId) => {
-    if (!cycleId) {
-      return null;
-    }
-
-    const id =
-      typeof cycleId === "object"
-        ? cycleId._id
-        : cycleId;
-
-    return (
-      cycles.find(
-        (cycle) =>
-          cycle._id?.toString() ===
-          id?.toString()
-      ) || null
-    );
-  };
-
-  const canManagerEditReview = (review) => {
-    const cycle = getCycleById(review.cycleId);
-
-    return (
-      review.status === "draft" &&
-      cycle?.status === "active"
-    );
-  };
-
   if (loading) {
     return (
-      <div>
+      <div className="flex h-64 items-center justify-center text-slate">
         Loading performance reviews...
       </div>
     );
   }
 
+  const isAdmin = role === "admin";
+  const isManager = role === "manager";
+  const isEmployee = role === "employee";
+
   return (
     <div>
-      <header>
-        <h1>Performance Reviews</h1>
+      <PageHeader
+        title="Performance Reviews"
+        subtitle={
+          isEmployee
+            ? "Feedback shared with you, and your response to it."
+            : "Run review cycles and write reviews for your people."
+        }
+      />
 
-        <p>
-          Manage employee performance reviews and
-          review cycles.
-        </p>
-      </header>
+      <Alert tone="error">{error}</Alert>
+      <Alert tone="success">{message}</Alert>
 
-      {message && <p>{message}</p>}
-
-      {error && <p>{error}</p>}
-
-      {/* ADMIN */}
-      {role === "admin" && (
-        <>
-          <section>
-            <h2>Create Review Cycle</h2>
-
-            <form onSubmit={handleCreateCycle}>
-              <div>
-                <label htmlFor="cycle-name">
-                  Cycle Name
-                </label>
-
-                <br />
-
+      {isAdmin && (
+        <Card
+          title="Create a review cycle"
+          description="A named period that reviews are written against."
+          className="mb-6"
+        >
+          <form onSubmit={handleCreateCycle}>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <Field label="Cycle name" htmlFor="cycleName">
                 <input
-                  id="cycle-name"
+                  id="cycleName"
                   name="name"
-                  type="text"
+                  className="field-input"
+                  placeholder="H1 2026"
                   value={cycleForm.name}
                   onChange={handleCycleChange}
                   required
                 />
-              </div>
+              </Field>
 
-              <div>
-                <label htmlFor="cycle-start-date">
-                  Start Date
-                </label>
-
-                <br />
-
+              <Field label="Start date" htmlFor="cycleStart">
                 <input
-                  id="cycle-start-date"
+                  id="cycleStart"
                   name="startDate"
                   type="date"
+                  className="field-input"
                   value={cycleForm.startDate}
                   onChange={handleCycleChange}
                   required
                 />
-              </div>
+              </Field>
 
-              <div>
-                <label htmlFor="cycle-end-date">
-                  End Date
-                </label>
-
-                <br />
-
+              <Field label="End date" htmlFor="cycleEnd">
                 <input
-                  id="cycle-end-date"
+                  id="cycleEnd"
                   name="endDate"
                   type="date"
+                  className="field-input"
+                  min={cycleForm.startDate || undefined}
                   value={cycleForm.endDate}
                   onChange={handleCycleChange}
                   required
                 />
-              </div>
+              </Field>
+            </div>
 
-              <br />
-
-              <button type="submit">
-                Create Cycle
-              </button>
-            </form>
-          </section>
-
-          <hr />
-
-          <section>
-            <h2>Review Cycles</h2>
-
-            {cycles.length === 0 ? (
-              <p>No review cycles found.</p>
-            ) : (
-              cycles.map((cycle) => (
-                <div key={cycle._id}>
-                  <h3>{cycle.name}</h3>
-
-                  <p>
-                    {formatDate(cycle.startDate)}
-                    {" - "}
-                    {formatDate(cycle.endDate)}
-                  </p>
-
-                  <p>
-                    Status:{" "}
-                    <strong>{cycle.status}</strong>
-                  </p>
-
-                  {cycle.status === "draft" && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleActivateCycle(
-                          cycle._id
-                        )
-                      }
-                    >
-                      Activate
-                    </button>
-                  )}
-
-                  {cycle.status === "active" && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleCompleteCycle(
-                          cycle._id
-                        )
-                      }
-                    >
-                      Complete
-                    </button>
-                  )}
-                </div>
-              ))
-            )}
-          </section>
-
-          <hr />
-
-          <section>
-            <h2>All Performance Reviews</h2>
-
-            <ReviewList
-              reviews={reviews}
-              getEmployeeName={getEmployeeName}
-              formatDate={formatDate}
-            />
-          </section>
-        </>
+            <button type="submit" className="btn-primary mt-5">
+              <LuPlus size={15} />
+              Create cycle
+            </button>
+          </form>
+        </Card>
       )}
 
-      {/* MANAGER */}
-      {role === "manager" && (
-        <>
-          <section>
-            <h2>Create Performance Review</h2>
+      {(isAdmin || isManager) && cycles.length > 0 && (
+        <div className="mb-6">
+          <h2 className="mb-4 text-lg font-semibold">Review cycles</h2>
 
-            {cycles.filter(
-              (cycle) => cycle.status === "active"
-            ).length === 0 ? (
-              <p>
-                There are no active review cycles.
-              </p>
-            ) : employees.length === 0 ? (
-              <p>
-                You currently have no active direct
-                reports available for review.
-              </p>
-            ) : (
-              <form onSubmit={handleCreateReview}>
-                <div>
-                  <label htmlFor="review-cycle">
-                    Review Cycle
-                  </label>
-
-                  <br />
-
-                  <select
-                    id="review-cycle"
-                    name="cycleId"
-                    value={reviewForm.cycleId}
-                    onChange={handleReviewFormChange}
-                    required
-                  >
-                    <option value="">
-                      Select cycle
-                    </option>
-
-                    {cycles
-                      .filter(
-                        (cycle) =>
-                          cycle.status === "active"
-                      )
-                      .map((cycle) => (
-                        <option
-                          key={cycle._id}
-                          value={cycle._id}
-                        >
-                          {cycle.name}
-                        </option>
-                      ))}
-                  </select>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {cycles.map((cycle) => (
+              <div key={cycle._id} className="card p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-display font-semibold">
+                      {cycle.name}
+                    </p>
+                    <p className="mt-0.5 text-sm text-slate">
+                      {formatDate(cycle.startDate)} —{" "}
+                      {formatDate(cycle.endDate)}
+                    </p>
+                  </div>
+                  <StatusPill status={cycle.status} />
                 </div>
 
-                <div>
-                  <label htmlFor="review-employee">
-                    Employee
-                  </label>
-
-                  <br />
-
-                  <select
-                    id="review-employee"
-                    name="employeeId"
-                    value={reviewForm.employeeId}
-                    onChange={handleReviewFormChange}
-                    required
-                  >
-                    <option value="">
-                      Select employee
-                    </option>
-
-                    {employees.map((employee) => (
-                      <option
-                        key={employee._id}
-                        value={employee._id}
+                {isAdmin && (
+                  <div className="mt-4 flex gap-2">
+                    {cycle.status === "draft" && (
+                      <button
+                        type="button"
+                        onClick={() => handleActivateCycle(cycle._id)}
+                        className="rounded-full bg-mint px-3.5 py-1.5 text-xs font-semibold text-ink
+                          transition-colors hover:bg-mintDark hover:text-white"
                       >
-                        {employee.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <br />
-
-                <button type="submit">
-                  Create Review
-                </button>
-              </form>
-            )}
-          </section>
-
-          <hr />
-
-          <section>
-            <h2>Team Performance Reviews</h2>
-
-            {reviews.length === 0 ? (
-              <p>
-                No team performance reviews found.
-              </p>
-            ) : (
-              reviews.map((review) => {
-                const cycle = getCycleById(
-                  review.cycleId
-                );
-
-                const managerCanEdit =
-                  canManagerEditReview(review);
-
-                return (
-                  <div key={review._id}>
-                    <h3>
-                      {getEmployeeName(
-                        review.employeeId
-                      )}
-                    </h3>
-
-                    <p>
-                      Cycle:{" "}
-                      {review.cycleId?.name || "-"}
-                    </p>
-
-                    <p>
-                      Status:{" "}
-                      <strong>{review.status}</strong>
-                    </p>
-
-                    {cycle?.status ===
-                      "completed" &&
-                      review.status === "draft" && (
-                        <p>
-                          This review cannot be edited
-                          or submitted because the
-                          review cycle is completed.
-                        </p>
-                      )}
-
-                    {editingReviewId ===
-                    review._id ? (
-                      <>
-                        <div>
-                          <label
-                            htmlFor={`rating-${review._id}`}
-                          >
-                            Rating (1-5)
-                          </label>
-
-                          <br />
-
-                          <input
-                            id={`rating-${review._id}`}
-                            name="rating"
-                            type="number"
-                            min="1"
-                            max="5"
-                            step="1"
-                            value={editForm.rating}
-                            onChange={handleEditChange}
-                          />
-                        </div>
-
-                        <div>
-                          <label
-                            htmlFor={`strengths-${review._id}`}
-                          >
-                            Strengths
-                          </label>
-
-                          <br />
-
-                          <textarea
-                            id={`strengths-${review._id}`}
-                            name="strengths"
-                            value={editForm.strengths}
-                            onChange={handleEditChange}
-                          />
-                        </div>
-
-                        <div>
-                          <label
-                            htmlFor={`areas-${review._id}`}
-                          >
-                            Areas for Improvement
-                          </label>
-
-                          <br />
-
-                          <textarea
-                            id={`areas-${review._id}`}
-                            name="areasForImprovement"
-                            value={
-                              editForm.areasForImprovement
-                            }
-                            onChange={handleEditChange}
-                          />
-                        </div>
-
-                        <div>
-                          <label
-                            htmlFor={`goals-${review._id}`}
-                          >
-                            Goals
-                          </label>
-
-                          <br />
-
-                          <textarea
-                            id={`goals-${review._id}`}
-                            name="goals"
-                            value={editForm.goals}
-                            onChange={handleEditChange}
-                          />
-                        </div>
-
-                        <br />
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleSaveReview(
-                              review._id
-                            )
-                          }
-                        >
-                          Save
-                        </button>
-
-                        {" "}
-
-                        <button
-                          type="button"
-                          onClick={cancelEditing}
-                        >
-                          Cancel
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <p>
-                          Rating:{" "}
-                          {review.rating ??
-                            "Not rated"}
-                        </p>
-
-                        <p>
-                          <strong>
-                            Strengths:
-                          </strong>{" "}
-                          {review.strengths || "-"}
-                        </p>
-
-                        <p>
-                          <strong>
-                            Areas for Improvement:
-                          </strong>{" "}
-                          {review.areasForImprovement ||
-                            "-"}
-                        </p>
-
-                        <p>
-                          <strong>Goals:</strong>{" "}
-                          {review.goals || "-"}
-                        </p>
-
-                        {managerCanEdit && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                startEditing(
-                                  review
-                                )
-                              }
-                            >
-                              Edit
-                            </button>
-
-                            {" "}
-
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleSubmitReview(
-                                  review._id
-                                )
-                              }
-                            >
-                              Submit
-                            </button>
-                          </>
-                        )}
-
-                        {review.status ===
-                          "acknowledged" && (
-                          <p>
-                            Employee acknowledged this
-                            review.
-                          </p>
-                        )}
-                      </>
+                        Activate
+                      </button>
                     )}
 
-                    <hr />
+                    {cycle.status === "active" && (
+                      <button
+                        type="button"
+                        onClick={() => handleCompleteCycle(cycle._id)}
+                        className="rounded-full border border-line px-3.5 py-1.5 text-xs font-medium
+                          transition-colors hover:border-ink"
+                      >
+                        Complete cycle
+                      </button>
+                    )}
                   </div>
-                );
-              })
-            )}
-          </section>
-        </>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
-      {/* EMPLOYEE */}
-      {role === "employee" && (
-        <section>
-          <h2>My Performance Reviews</h2>
+      {isManager && (
+        <Card title="Start a review" className="mb-6">
+          <form onSubmit={handleCreateReview}>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="Cycle" htmlFor="reviewCycle">
+                <select
+                  id="reviewCycle"
+                  name="cycleId"
+                  className="field-input"
+                  value={reviewForm.cycleId}
+                  onChange={handleReviewFormChange}
+                  required
+                >
+                  <option value="">Select cycle</option>
+                  {cycles
+                    .filter((cycle) => cycle.status === "active")
+                    .map((cycle) => (
+                      <option key={cycle._id} value={cycle._id}>
+                        {cycle.name}
+                      </option>
+                    ))}
+                </select>
+              </Field>
 
-          {reviews.length === 0 ? (
-            <p>
-              No performance reviews found.
-            </p>
-          ) : (
-            reviews.map((review) => (
-              <div key={review._id}>
-                <h3>
-                  {review.cycleId?.name ||
-                    "Performance Review"}
-                </h3>
+              <Field label="Employee" htmlFor="reviewEmployee">
+                <select
+                  id="reviewEmployee"
+                  name="employeeId"
+                  className="field-input"
+                  value={reviewForm.employeeId}
+                  onChange={handleReviewFormChange}
+                  required
+                >
+                  <option value="">Select employee</option>
+                  {employees.map((employee) => (
+                    <option key={employee._id} value={employee._id}>
+                      {employee.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
 
-                <p>
-                  Status:{" "}
-                  <strong>{review.status}</strong>
-                </p>
+            <button type="submit" className="btn-primary mt-5">
+              Start review
+            </button>
+          </form>
+        </Card>
+      )}
 
-                <p>
-                  Rating:{" "}
-                  {review.rating ?? "Not rated"}
-                </p>
+      <h2 className="mb-4 text-lg font-semibold">
+        {isEmployee ? "My reviews" : "Reviews"}
+      </h2>
 
-                <p>
-                  <strong>
-                    Strengths:
-                  </strong>{" "}
-                  {review.strengths || "-"}
-                </p>
+      {reviews.length === 0 ? (
+        <EmptyState
+          icon={LuStar}
+          title="No reviews yet"
+          hint={
+            isEmployee
+              ? "Reviews shared with you will appear here."
+              : "Start a review for someone once a cycle is active."
+          }
+        />
+      ) : (
+        <div className="space-y-3">
+          {reviews.map((review) => {
+            const isEditing = editingReviewId === review._id;
+            const canEdit =
+              (isManager || isAdmin) && review.status === "draft";
+            const canAcknowledge =
+              isEmployee && review.status === "submitted";
 
-                <p>
-                  <strong>
-                    Areas for Improvement:
-                  </strong>{" "}
-                  {review.areasForImprovement ||
-                    "-"}
-                </p>
+            return (
+              <article key={review._id} className="card p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="font-display font-semibold">
+                      {getEmployeeName(review.employeeId)}
+                    </p>
+                    <p className="mt-0.5 text-sm text-slate">
+                      {review.cycleId?.name || "No cycle"}
+                    </p>
+                  </div>
 
-                <p>
-                  <strong>Goals:</strong>{" "}
-                  {review.goals || "-"}
-                </p>
+                  <div className="flex items-center gap-3">
+                    <Rating value={review.rating} />
+                    <StatusPill status={review.status} />
+                  </div>
+                </div>
 
-                {review.status === "submitted" && (
-                  <>
-                    <label
-                      htmlFor={`comment-${review._id}`}
+                {isEditing ? (
+                  <div className="mt-5 space-y-4 border-t border-line pt-5">
+                    <Field label="Rating (1–5)" htmlFor={`rating-${review._id}`}>
+                      <input
+                        id={`rating-${review._id}`}
+                        name="rating"
+                        type="number"
+                        min="1"
+                        max="5"
+                        step="1"
+                        className="field-input"
+                        value={editForm.rating}
+                        onChange={handleEditChange}
+                      />
+                    </Field>
+
+                    <Field label="Strengths" htmlFor={`strengths-${review._id}`}>
+                      <textarea
+                        id={`strengths-${review._id}`}
+                        name="strengths"
+                        rows="3"
+                        className="field-input resize-none"
+                        value={editForm.strengths}
+                        onChange={handleEditChange}
+                      />
+                    </Field>
+
+                    <Field
+                      label="Areas for improvement"
+                      htmlFor={`areas-${review._id}`}
                     >
-                      Your Comments
-                    </label>
+                      <textarea
+                        id={`areas-${review._id}`}
+                        name="areasForImprovement"
+                        rows="3"
+                        className="field-input resize-none"
+                        value={editForm.areasForImprovement}
+                        onChange={handleEditChange}
+                      />
+                    </Field>
 
-                    <br />
+                    <Field label="Goals" htmlFor={`goals-${review._id}`}>
+                      <textarea
+                        id={`goals-${review._id}`}
+                        name="goals"
+                        rows="3"
+                        className="field-input resize-none"
+                        value={editForm.goals}
+                        onChange={handleEditChange}
+                      />
+                    </Field>
 
-                    <textarea
-                      id={`comment-${review._id}`}
-                      value={
-                        employeeComments[
-                          review._id
-                        ] || ""
-                      }
-                      onChange={(event) =>
-                        handleEmployeeCommentChange(
-                          review._id,
-                          event.target.value
-                        )
-                      }
-                      placeholder="Add optional comments..."
-                    />
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        onClick={() => handleSaveReview(review._id)}
+                        className="btn-primary"
+                      >
+                        Save review
+                      </button>
 
-                    <br />
+                      <button
+                        type="button"
+                        onClick={cancelEditing}
+                        className="btn-secondary"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-4 space-y-3 border-t border-line pt-4 text-sm">
+                    {review.strengths && (
+                      <div>
+                        <p className="text-xs text-slate">Strengths</p>
+                        <p className="mt-0.5">{review.strengths}</p>
+                      </div>
+                    )}
+
+                    {review.areasForImprovement && (
+                      <div>
+                        <p className="text-xs text-slate">
+                          Areas for improvement
+                        </p>
+                        <p className="mt-0.5">
+                          {review.areasForImprovement}
+                        </p>
+                      </div>
+                    )}
+
+                    {review.goals && (
+                      <div>
+                        <p className="text-xs text-slate">Goals</p>
+                        <p className="mt-0.5">{review.goals}</p>
+                      </div>
+                    )}
+
+                    {review.employeeComments && (
+                      <div className="rounded-xl bg-canvas p-3.5">
+                        <p className="text-xs text-slate">
+                          Employee response
+                        </p>
+                        <p className="mt-0.5">{review.employeeComments}</p>
+                      </div>
+                    )}
+
+                    <div className="flex gap-5 text-xs text-slate">
+                      {review.submittedAt && (
+                        <span>
+                          Submitted {formatDate(review.submittedAt)}
+                        </span>
+                      )}
+                      {review.acknowledgedAt && (
+                        <span>
+                          Acknowledged {formatDate(review.acknowledgedAt)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {!isEditing && canEdit && (
+                  <div className="mt-4 flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => startEditing(review)}
+                      className="btn-secondary"
+                    >
+                      Edit
+                    </button>
 
                     <button
                       type="button"
-                      onClick={() =>
-                        handleAcknowledgeReview(
-                          review._id
-                        )
-                      }
+                      onClick={() => handleSubmitReview(review._id)}
+                      className="btn-primary"
                     >
-                      Acknowledge Review
+                      Submit to employee
                     </button>
-                  </>
+                  </div>
                 )}
 
-                {review.status ===
-                  "acknowledged" && (
-                  <p>
-                    You acknowledged this review.
-                  </p>
+                {canAcknowledge && (
+                  <div className="mt-4 space-y-3 border-t border-line pt-4">
+                    <Field
+                      label="Your response (optional)"
+                      htmlFor={`comment-${review._id}`}
+                    >
+                      <textarea
+                        id={`comment-${review._id}`}
+                        rows="3"
+                        className="field-input resize-none"
+                        value={employeeComments[review._id] || ""}
+                        onChange={(event) =>
+                          handleEmployeeCommentChange(
+                            review._id,
+                            event.target.value
+                          )
+                        }
+                      />
+                    </Field>
+
+                    <button
+                      type="button"
+                      onClick={() => handleAcknowledgeReview(review._id)}
+                      className="btn-primary"
+                    >
+                      Acknowledge review
+                    </button>
+                  </div>
                 )}
-
-                {review.employeeComments && (
-                  <p>
-                    <strong>
-                      Your Comments:
-                    </strong>{" "}
-                    {review.employeeComments}
-                  </p>
-                )}
-
-                <hr />
-              </div>
-            ))
-          )}
-        </section>
-      )}
-    </div>
-  );
-};
-
-const ReviewList = ({
-  reviews,
-  getEmployeeName,
-  formatDate,
-}) => {
-  if (reviews.length === 0) {
-    return (
-      <p>
-        No performance reviews found.
-      </p>
-    );
-  }
-
-  return (
-    <div>
-      {reviews.map((review) => (
-        <div key={review._id}>
-          <h3>
-            {getEmployeeName(review.employeeId)}
-          </h3>
-
-          <p>
-            Cycle:{" "}
-            {review.cycleId?.name || "-"}
-          </p>
-
-          <p>
-            Status:{" "}
-            <strong>{review.status}</strong>
-          </p>
-
-          <p>
-            Rating:{" "}
-            {review.rating ?? "Not rated"}
-          </p>
-
-          <p>
-            <strong>Submitted:</strong>{" "}
-            {formatDate(review.submittedAt)}
-          </p>
-
-          <p>
-            <strong>Acknowledged:</strong>{" "}
-            {formatDate(review.acknowledgedAt)}
-          </p>
-
-          <p>
-            <strong>Strengths:</strong>{" "}
-            {review.strengths || "-"}
-          </p>
-
-          <p>
-            <strong>
-              Areas for Improvement:
-            </strong>{" "}
-            {review.areasForImprovement || "-"}
-          </p>
-
-          <p>
-            <strong>Goals:</strong>{" "}
-            {review.goals || "-"}
-          </p>
-
-          {review.employeeComments && (
-            <p>
-              <strong>
-                Employee Comments:
-              </strong>{" "}
-              {review.employeeComments}
-            </p>
-          )}
-
-          <hr />
+              </article>
+            );
+          })}
         </div>
-      ))}
+      )}
     </div>
   );
 };

@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import User from "../models/User.js";
 
+
 export const protect = async (
   req,
   res,
@@ -10,6 +11,7 @@ export const protect = async (
   try {
     const authHeader =
       req.headers.authorization;
+
 
     if (
       !authHeader ||
@@ -21,8 +23,10 @@ export const protect = async (
       });
     }
 
+
     const token =
       authHeader.slice(7).trim();
+
 
     if (
       !token ||
@@ -34,12 +38,14 @@ export const protect = async (
       });
     }
 
+
     if (!process.env.JWT_SECRET) {
       return res.status(500).json({
         message:
           "Server authentication configuration error",
       });
     }
+
 
     const decoded = jwt.verify(
       token,
@@ -48,6 +54,7 @@ export const protect = async (
         algorithms: ["HS256"],
       }
     );
+
 
     if (
       !decoded ||
@@ -63,6 +70,7 @@ export const protect = async (
       });
     }
 
+
     const user =
       await User.findById(
         decoded.userId
@@ -72,6 +80,7 @@ export const protect = async (
         )
         .lean();
 
+
     if (!user) {
       return res.status(401).json({
         message:
@@ -79,7 +88,9 @@ export const protect = async (
       });
     }
 
+
     req.user = user;
+
 
     return next();
   } catch {
@@ -89,3 +100,30 @@ export const protect = async (
     });
   }
 };
+
+
+export const requireRole =
+  (...allowedRoles) =>
+  (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({
+        message:
+          "Authentication required",
+      });
+    }
+
+
+    if (
+      !Array.isArray(allowedRoles) ||
+      allowedRoles.length === 0 ||
+      !allowedRoles.includes(req.user.role)
+    ) {
+      return res.status(403).json({
+        message:
+          "Insufficient permissions",
+      });
+    }
+
+
+    return next();
+  };

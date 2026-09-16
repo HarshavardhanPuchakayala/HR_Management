@@ -1,5 +1,6 @@
 import express from "express";
 
+
 import {
   createLeaveRequest,
   getMyLeaveRequests,
@@ -7,14 +8,17 @@ import {
   getAllLeaveRequests,
   getTeamLeaveRequests,
   cancelLeaveRequest,
-} from "../controllers/leaveController.js";
+} from "../controllers/leaveRequestsController.js";
+
 
 import {
   protect,
   requireRole,
 } from "../middleware/authMiddleware.js";
 
+
 const router = express.Router();
+
 
 router.post(
   "/",
@@ -22,11 +26,13 @@ router.post(
   createLeaveRequest
 );
 
+
 router.get(
   "/my",
   protect,
   getMyLeaveRequests
 );
+
 
 router.get(
   "/team",
@@ -35,12 +41,14 @@ router.get(
   getTeamLeaveRequests
 );
 
+
 router.get(
   "/",
   protect,
   requireRole("admin"),
   getAllLeaveRequests
 );
+
 
 router.put(
   "/:leaveRequestId",
@@ -49,10 +57,12 @@ router.put(
   approveOrRejectLeaveRequest
 );
 
+
 router.patch(
   "/:leaveRequestId/cancel",
   protect,
   cancelLeaveRequest
 );
+
 
 export default router;

@@ -1,14 +1,22 @@
-
 import { useEffect, useState } from "react";
-
+import { LuCalculator, LuUsers, LuCheck, LuFileText } from "react-icons/lu";
 import {
   getPayrollRuns,
   calculatePayroll,
   calculateBulkPayroll,
   approvePayroll,
 } from "../api/payroll.js";
-
 import api from "../api/axios.js";
+import {
+  PageHeader,
+  Alert,
+  Card,
+  Table,
+  Td,
+  Field,
+  StatusPill,
+  EmptyState,
+} from "../components/Ui.jsx";
 
 const currentDate = new Date();
 
@@ -34,45 +42,25 @@ const formatMoney = (value) =>
     maximumFractionDigits: 2,
   }).format(Number(value || 0));
 
-const formatDate = (value) => {
-  if (!value) return "-";
-
-  return new Date(value).toLocaleDateString("en-IN");
-};
-
 export default function Payroll() {
   const [employees, setEmployees] = useState([]);
   const [payrollRuns, setPayrollRuns] = useState([]);
 
   const [employeeId, setEmployeeId] = useState("");
-
-  const [month, setMonth] = useState(
-    currentDate.getMonth() + 1
-  );
-
-  const [year, setYear] = useState(
-    currentDate.getFullYear()
-  );
+  const [month, setMonth] = useState(currentDate.getMonth() + 1);
+  const [year, setYear] = useState(currentDate.getFullYear());
 
   const [workingDays, setWorkingDays] = useState(30);
   const [paidDays, setPaidDays] = useState(30);
 
-  const [selectedPayroll, setSelectedPayroll] =
-    useState(null);
+  const [selectedPayroll, setSelectedPayroll] = useState(null);
 
   const [loading, setLoading] = useState(false);
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [loadingEmployees, setLoadingEmployees] = useState(true);
+  const [loadingRuns, setLoadingRuns] = useState(false);
 
-  const [bulkLoading, setBulkLoading] =
-    useState(false);
-
-  const [loadingEmployees, setLoadingEmployees] =
-    useState(true);
-
-  const [loadingRuns, setLoadingRuns] =
-    useState(false);
-
-  const [bulkResult, setBulkResult] =
-    useState(null);
+  const [bulkResult, setBulkResult] = useState(null);
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -89,16 +77,18 @@ export default function Payroll() {
     try {
       setLoadingEmployees(true);
 
-      const response =
-        await api.get("/employees");
+      const response = await api.get("/employees");
 
+      // Tolerate either response shape — see note in the README about
+      // /employees returning a bare array on some pages.
       setEmployees(
-        response.data.employees || []
+        Array.isArray(response.data)
+          ? response.data
+          : response.data?.employees || []
       );
     } catch (err) {
       setError(
-        err.response?.data?.message ||
-          "Failed to load employees"
+        err.response?.data?.message || "Failed to load employees"
       );
     } finally {
       setLoadingEmployees(false);
@@ -109,19 +99,11 @@ export default function Payroll() {
     try {
       setLoadingRuns(true);
 
-      const response = await getPayrollRuns({
-        year,
-        month,
-      });
+      const response = await getPayrollRuns({ year, month });
 
-      setPayrollRuns(
-        response.payrollRuns || []
-      );
+      setPayrollRuns(response.payrollRuns || []);
     } catch (err) {
-      setError(
-        err.response?.data?.message ||
-          "Failed to load payroll"
-      );
+      setError(err.response?.data?.message || "Failed to load payroll");
     } finally {
       setLoadingRuns(false);
     }
@@ -129,21 +111,12 @@ export default function Payroll() {
 
   const validatePayrollDays = () => {
     if (workingDays <= 0) {
-      setError(
-        "Working days must be greater than zero"
-      );
-
+      setError("Working days must be greater than zero");
       return false;
     }
 
-    if (
-      paidDays < 0 ||
-      paidDays > workingDays
-    ) {
-      setError(
-        "Paid days must be between 0 and working days"
-      );
-
+    if (paidDays < 0 || paidDays > workingDays) {
+      setError("Paid days must be between 0 and working days");
       return false;
     }
 
@@ -158,46 +131,29 @@ export default function Payroll() {
     setSelectedPayroll(null);
 
     if (!employeeId) {
-      setError(
-        "Please select an employee"
-      );
-
+      setError("Please select an employee");
       return;
     }
 
-    if (!validatePayrollDays()) {
-      return;
-    }
+    if (!validatePayrollDays()) return;
 
     try {
       setLoading(true);
 
-      const response =
-        await calculatePayroll(
-          employeeId,
-          {
-            month: Number(month),
-            year: Number(year),
-            workingDays:
-              Number(workingDays),
-            paidDays:
-              Number(paidDays),
-          }
-        );
+      const response = await calculatePayroll(employeeId, {
+        month: Number(month),
+        year: Number(year),
+        workingDays: Number(workingDays),
+        paidDays: Number(paidDays),
+      });
 
-      setSelectedPayroll(
-        response.payroll
-      );
-
-      setSuccess(
-        "Payroll calculated successfully"
-      );
+      setSelectedPayroll(response.payroll);
+      setSuccess("Payroll calculated.");
 
       await loadPayrollRuns();
     } catch (err) {
       setError(
-        err.response?.data?.message ||
-          "Failed to calculate payroll"
+        err.response?.data?.message || "Failed to calculate payroll"
       );
     } finally {
       setLoading(false);
@@ -209,36 +165,25 @@ export default function Payroll() {
     setSuccess("");
     setBulkResult(null);
 
-    if (!validatePayrollDays()) {
-      return;
-    }
+    if (!validatePayrollDays()) return;
 
     try {
       setBulkLoading(true);
 
-      const response =
-        await calculateBulkPayroll({
-          month: Number(month),
-          year: Number(year),
-          workingDays:
-            Number(workingDays),
-          paidDays:
-            Number(paidDays),
-        });
+      const response = await calculateBulkPayroll({
+        month: Number(month),
+        year: Number(year),
+        workingDays: Number(workingDays),
+        paidDays: Number(paidDays),
+      });
 
-      setBulkResult(
-        response.results
-      );
-
-      setSuccess(
-        "Bulk payroll processing completed"
-      );
+      setBulkResult(response.results);
+      setSuccess("Bulk payroll processing completed.");
 
       await loadPayrollRuns();
     } catch (err) {
       setError(
-        err.response?.data?.message ||
-          "Failed to process bulk payroll"
+        err.response?.data?.message || "Failed to process bulk payroll"
       );
     } finally {
       setBulkLoading(false);
@@ -246,9 +191,7 @@ export default function Payroll() {
   };
 
   const handleApprove = async () => {
-    if (!selectedPayroll?._id) {
-      return;
-    }
+    if (!selectedPayroll?._id) return;
 
     setError("");
     setSuccess("");
@@ -256,33 +199,22 @@ export default function Payroll() {
     try {
       setLoading(true);
 
-      const response =
-        await approvePayroll(
-          selectedPayroll._id
-        );
+      const response = await approvePayroll(selectedPayroll._id);
 
-      setSelectedPayroll(
-        response.payroll
-      );
-
-      setSuccess(
-        "Payroll approved successfully"
-      );
+      setSelectedPayroll(response.payroll);
+      setSuccess("Payroll approved.");
 
       await loadPayrollRuns();
     } catch (err) {
       setError(
-        err.response?.data?.message ||
-          "Failed to approve payroll"
+        err.response?.data?.message || "Failed to approve payroll"
       );
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSelectPayroll = (
-    payroll
-  ) => {
+  const handleSelectPayroll = (payroll) => {
     setSelectedPayroll(payroll);
     setError("");
     setSuccess("");
@@ -290,9 +222,7 @@ export default function Payroll() {
   };
 
   const handleViewPayslip = () => {
-    if (!selectedPayroll?._id) {
-      return;
-    }
+    if (!selectedPayroll?._id) return;
 
     window.open(
       `/payroll/${selectedPayroll._id}/payslip`,
@@ -302,1144 +232,264 @@ export default function Payroll() {
   };
 
   return (
-    <div style={styles.page}>
-      <div style={styles.header}>
-        <div>
-          <h1 style={styles.title}>
-            Payroll
-          </h1>
+    <div>
+      <PageHeader
+        title="Payroll"
+        subtitle="Calculate and approve pay for a period. Nothing leaves PeopleFlow."
+      />
 
-          <p style={styles.subtitle}>
-            Calculate and manage employee
-            payroll internally.
-          </p>
-        </div>
-      </div>
+      <Alert tone="error">{error}</Alert>
+      <Alert tone="success">{success}</Alert>
 
-      {error && (
-        <div style={styles.error}>
-          {error}
-        </div>
-      )}
-
-      {success && (
-        <div style={styles.success}>
-          {success}
-        </div>
-      )}
-
-      <div style={styles.card}>
-        <h2 style={styles.sectionTitle}>
-          Calculate Payroll
-        </h2>
-
-        <form
-          onSubmit={handleCalculate}
-        >
-          <div style={styles.grid}>
-            <div style={styles.field}>
-              <label style={styles.label}>
-                Employee
-              </label>
-
-              <select
-                value={employeeId}
-                onChange={(event) =>
-                  setEmployeeId(
-                    event.target.value
-                  )
-                }
-                style={styles.input}
-                disabled={
-                  loadingEmployees ||
-                  loading ||
-                  bulkLoading
-                }
-              >
-                <option value="">
-                  Select employee
-                </option>
-
-                {employees.map(
-                  (employee) => (
-                    <option
-                      key={employee._id}
-                      value={employee._id}
-                    >
+      <Card title="Run payroll" className="mb-6">
+        <form onSubmit={handleCalculate}>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="lg:col-span-2">
+              <Field label="Employee" htmlFor="payrollEmployee">
+                <select
+                  id="payrollEmployee"
+                  className="field-input"
+                  value={employeeId}
+                  onChange={(event) => setEmployeeId(event.target.value)}
+                  disabled={
+                    loadingEmployees || loading || bulkLoading
+                  }
+                >
+                  <option value="">Select employee</option>
+                  {employees.map((employee) => (
+                    <option key={employee._id} value={employee._id}>
                       {employee.name} —{" "}
-                      {employee.department ||
-                        "No department"}
+                      {employee.department || "No department"}
                     </option>
-                  )
-                )}
-              </select>
+                  ))}
+                </select>
+              </Field>
             </div>
 
-            <div style={styles.field}>
-              <label style={styles.label}>
-                Month
-              </label>
-
+            <Field label="Month" htmlFor="payrollMonth">
               <select
+                id="payrollMonth"
+                className="field-input"
                 value={month}
-                onChange={(event) =>
-                  setMonth(
-                    Number(
-                      event.target.value
-                    )
-                  )
-                }
-                style={styles.input}
-                disabled={
-                  loading ||
-                  bulkLoading
-                }
+                onChange={(event) => setMonth(Number(event.target.value))}
               >
-                {MONTHS.map(
-                  (name, index) => (
-                    <option
-                      key={name}
-                      value={index + 1}
-                    >
-                      {name}
-                    </option>
-                  )
-                )}
+                {MONTHS.map((name, index) => (
+                  <option key={name} value={index + 1}>
+                    {name}
+                  </option>
+                ))}
               </select>
-            </div>
+            </Field>
 
-            <div style={styles.field}>
-              <label style={styles.label}>
-                Year
-              </label>
-
+            <Field label="Year" htmlFor="payrollYear">
               <input
+                id="payrollYear"
                 type="number"
+                min="2000"
+                max="2100"
+                className="field-input"
                 value={year}
-                onChange={(event) =>
-                  setYear(
-                    Number(
-                      event.target.value
-                    )
-                  )
-                }
-                style={styles.input}
-                min="2020"
-                disabled={
-                  loading ||
-                  bulkLoading
-                }
+                onChange={(event) => setYear(Number(event.target.value))}
               />
-            </div>
+            </Field>
 
-            <div style={styles.field}>
-              <label style={styles.label}>
-                Working Days
-              </label>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Working days" htmlFor="workingDays">
+                <input
+                  id="workingDays"
+                  type="number"
+                  min="1"
+                  className="field-input"
+                  value={workingDays}
+                  onChange={(event) =>
+                    setWorkingDays(Number(event.target.value))
+                  }
+                />
+              </Field>
 
-              <input
-                type="number"
-                value={workingDays}
-                onChange={(event) =>
-                  setWorkingDays(
-                    Number(
-                      event.target.value
-                    )
-                  )
-                }
-                style={styles.input}
-                min="1"
-                disabled={
-                  loading ||
-                  bulkLoading
-                }
-              />
-            </div>
-
-            <div style={styles.field}>
-              <label style={styles.label}>
-                Paid Days
-              </label>
-
-              <input
-                type="number"
-                value={paidDays}
-                onChange={(event) =>
-                  setPaidDays(
-                    Number(
-                      event.target.value
-                    )
-                  )
-                }
-                style={styles.input}
-                min="0"
-                disabled={
-                  loading ||
-                  bulkLoading
-                }
-              />
+              <Field label="Paid days" htmlFor="paidDays">
+                <input
+                  id="paidDays"
+                  type="number"
+                  min="0"
+                  className="field-input"
+                  value={paidDays}
+                  onChange={(event) =>
+                    setPaidDays(Number(event.target.value))
+                  }
+                />
+              </Field>
             </div>
           </div>
 
-          <div style={styles.buttonRow}>
+          <div className="mt-5 flex flex-wrap gap-3">
             <button
               type="submit"
-              disabled={
-                loading ||
-                bulkLoading
-              }
-              style={
-                styles.primaryButton
-              }
+              disabled={loading || bulkLoading}
+              className="btn-primary"
             >
-              {loading
-                ? "Calculating..."
-                : "Calculate Payroll"}
+              <LuCalculator size={15} />
+              {loading ? "Calculating..." : "Calculate for employee"}
             </button>
 
             <button
               type="button"
-              onClick={
-                handleBulkCalculate
-              }
-              disabled={
-                loading ||
-                bulkLoading
-              }
-              style={
-                styles.bulkButton
-              }
+              onClick={handleBulkCalculate}
+              disabled={loading || bulkLoading}
+              className="btn-secondary"
             >
-              {bulkLoading
-                ? "Processing All Employees..."
-                : "Calculate All Employees"}
+              <LuUsers size={15} />
+              {bulkLoading ? "Processing..." : "Run for everyone"}
             </button>
           </div>
         </form>
-      </div>
+      </Card>
 
       {bulkResult && (
-        <div style={styles.card}>
-          <div style={styles.listHeader}>
-            <div>
-              <h2
-                style={
-                  styles.sectionTitle
-                }
-              >
-                Bulk Payroll Result
-              </h2>
+        <Card title="Bulk run results" className="mb-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {[
+              ["Employees", bulkResult.totalEmployees, "bg-ink text-white"],
+              ["Calculated", bulkResult.calculated, "bg-mint text-ink"],
+              ["Skipped", bulkResult.skipped, "bg-amber text-ink"],
+              ["Failed", bulkResult.failed, "bg-coral text-white"],
+            ].map(([label, value, tone]) => (
+              <div key={label} className={`rounded-xl p-4 ${tone}`}>
+                <p className="text-xs opacity-70">{label}</p>
+                <p className="mt-1 font-display text-2xl font-semibold">
+                  {value ?? 0}
+                </p>
+              </div>
+            ))}
+          </div>
 
-              <p style={styles.muted}>
-                {MONTHS[month - 1]}{" "}
-                {year}
+          {bulkResult.errors?.length > 0 && (
+            <div className="mt-5">
+              <p className="mb-2 text-sm font-semibold">
+                Couldn't process
               </p>
-            </div>
-          </div>
-
-          <div style={styles.summaryGrid}>
-            <SummaryCard
-              label="Total Employees"
-              value={
-                bulkResult.totalEmployees
-              }
-            />
-
-            <SummaryCard
-              label="Calculated"
-              value={
-                bulkResult.calculated
-              }
-            />
-
-            <SummaryCard
-              label="Skipped"
-              value={
-                bulkResult.skipped
-              }
-            />
-
-            <SummaryCard
-              label="Failed"
-              value={
-                bulkResult.failed
-              }
-            />
-          </div>
-
-          {bulkResult.errors?.length >
-            0 && (
-            <div
-              style={
-                styles.bulkErrors
-              }
-            >
-              <h3
-                style={
-                  styles.subTitle
-                }
-              >
-                Processing Details
-              </h3>
-
-              {bulkResult.errors.map(
-                (item, index) => (
+              <div className="space-y-2">
+                {bulkResult.errors.map((item) => (
                   <div
-                    key={`${item.employeeId}-${index}`}
-                    style={
-                      styles.bulkErrorRow
-                    }
+                    key={item.employeeId}
+                    className="rounded-xl bg-coral/10 px-4 py-2.5 text-sm text-coralDark"
                   >
-                    <div>
-                      <strong>
-                        {
-                          item.employeeName
-                        }
-                      </strong>
-
-                      <div
-                        style={
-                          styles.muted
-                        }
-                      >
-                        {item.status}
-                      </div>
-                    </div>
-
-                    <span>
-                      {item.message}
-                    </span>
+                    <strong>{item.employeeName || item.employeeId}</strong>
+                    {" — "}
+                    {item.message}
                   </div>
-                )
-              )}
+                ))}
+              </div>
             </div>
           )}
-        </div>
+        </Card>
       )}
 
       {selectedPayroll && (
-        <PayrollDetails
-          payroll={
-            selectedPayroll
-          }
-          onApprove={
-            handleApprove
-          }
-          onViewPayslip={
-            handleViewPayslip
-          }
-          loading={loading}
-        />
+        <Card className="mb-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-sm text-slate">
+                {selectedPayroll.employeeId?.name || "Employee"} ·{" "}
+                {MONTHS[selectedPayroll.payrollMonth - 1]}{" "}
+                {selectedPayroll.payrollYear}
+              </p>
+              <p className="mt-1 font-display text-3xl font-semibold">
+                {formatMoney(selectedPayroll.netPay)}
+              </p>
+              <p className="mt-1 text-sm text-slate">Net pay</p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <StatusPill status={selectedPayroll.status} />
+
+              <button
+                type="button"
+                onClick={handleViewPayslip}
+                className="btn-secondary"
+              >
+                <LuFileText size={15} />
+                View payslip
+              </button>
+
+              {selectedPayroll.status !== "approved" && (
+                <button
+                  type="button"
+                  onClick={handleApprove}
+                  disabled={loading}
+                  className="btn-primary"
+                >
+                  <LuCheck size={15} />
+                  Approve
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-5 grid grid-cols-2 gap-4 border-t border-line pt-5 sm:grid-cols-4">
+            {[
+              ["Gross pay", selectedPayroll.grossPay],
+              ["Deductions", selectedPayroll.totalDeductions],
+              ["Net pay", selectedPayroll.netPay],
+              ["Employer cost", selectedPayroll.employerCost],
+            ].map(([label, value]) => (
+              <div key={label}>
+                <p className="text-xs text-slate">{label}</p>
+                <p className="mt-1 font-display font-semibold">
+                  {formatMoney(value)}
+                </p>
+              </div>
+            ))}
+          </div>
+        </Card>
       )}
 
-      <div style={styles.card}>
-        <div style={styles.listHeader}>
-          <div>
-            <h2
-              style={
-                styles.sectionTitle
-              }
-            >
-              Payroll History
-            </h2>
+      <h2 className="mb-4 text-lg font-semibold">
+        {MONTHS[month - 1]} {year} runs
+      </h2>
 
-            <p style={styles.muted}>
-              {MONTHS[month - 1]}{" "}
-              {year}
-            </p>
-          </div>
-
-          <button
-            onClick={
-              loadPayrollRuns
-            }
-            disabled={
-              loadingRuns ||
-              bulkLoading
-            }
-            style={
-              styles.secondaryButton
-            }
-          >
-            {loadingRuns
-              ? "Refreshing..."
-              : "Refresh"}
-          </button>
-        </div>
-
-        {payrollRuns.length ===
-        0 ? (
-          <p style={styles.empty}>
-            No payroll records found.
-          </p>
-        ) : (
-          <div
-            style={
-              styles.tableWrapper
-            }
-          >
-            <table
-              style={styles.table}
-            >
-              <thead>
-                <tr>
-                  <th
-                    style={styles.th}
-                  >
-                    Employee
-                  </th>
-
-                  <th
-                    style={styles.th}
-                  >
-                    Gross
-                  </th>
-
-                  <th
-                    style={styles.th}
-                  >
-                    Deductions
-                  </th>
-
-                  <th
-                    style={styles.th}
-                  >
-                    Net Pay
-                  </th>
-
-                  <th
-                    style={styles.th}
-                  >
-                    Status
-                  </th>
-
-                  <th
-                    style={styles.th}
-                  >
-                    Action
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {payrollRuns.map(
-                  (payroll) => (
-                    <tr
-                      key={
-                        payroll._id
-                      }
-                    >
-                      <td
-                        style={
-                          styles.td
-                        }
-                      >
-                        {payroll
-                          .employeeId
-                          ?.name ||
-                          "Unknown"}
-                      </td>
-
-                      <td
-                        style={
-                          styles.td
-                        }
-                      >
-                        {formatMoney(
-                          payroll.grossPay
-                        )}
-                      </td>
-
-                      <td
-                        style={
-                          styles.td
-                        }
-                      >
-                        {formatMoney(
-                          payroll.totalDeductions
-                        )}
-                      </td>
-
-                      <td
-                        style={
-                          styles.td
-                        }
-                      >
-                        <strong>
-                          {formatMoney(
-                            payroll.netPay
-                          )}
-                        </strong>
-                      </td>
-
-                      <td
-                        style={
-                          styles.td
-                        }
-                      >
-                        <span
-                          style={{
-                            ...styles.status,
-                            ...getStatusStyle(
-                              payroll.status
-                            ),
-                          }}
-                        >
-                          {
-                            payroll.status
-                          }
-                        </span>
-                      </td>
-
-                      <td
-                        style={
-                          styles.td
-                        }
-                      >
-                        <button
-                          onClick={() =>
-                            handleSelectPayroll(
-                              payroll
-                            )
-                          }
-                          style={
-                            styles.secondaryButton
-                          }
-                        >
-                          View
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      {loadingRuns ? (
+        <p className="text-slate">Loading payroll runs...</p>
+      ) : payrollRuns.length === 0 ? (
+        <EmptyState
+          icon={LuCalculator}
+          title={`No payroll run for ${MONTHS[month - 1]} ${year}`}
+          hint="Calculate for one employee, or run payroll for everyone at once."
+        />
+      ) : (
+        <Table
+          head={["Employee", "Gross", "Deductions", "Net", "Status", ""]}
+        >
+          {payrollRuns.map((payroll) => (
+            <tr key={payroll._id} className="bg-surface">
+              <Td className="font-medium">
+                {payroll.employeeId?.name || "Unknown"}
+              </Td>
+              <Td className="text-slate">
+                {formatMoney(payroll.grossPay)}
+              </Td>
+              <Td className="text-slate">
+                {formatMoney(payroll.totalDeductions)}
+              </Td>
+              <Td className="font-display font-semibold">
+                {formatMoney(payroll.netPay)}
+              </Td>
+              <Td>
+                <StatusPill status={payroll.status} />
+              </Td>
+              <Td>
+                <button
+                  type="button"
+                  onClick={() => handleSelectPayroll(payroll)}
+                  className="text-sm font-medium text-coral hover:text-coralDark"
+                >
+                  Open
+                </button>
+              </Td>
+            </tr>
+          ))}
+        </Table>
+      )}
     </div>
   );
 }
-
-function PayrollDetails({
-  payroll,
-  onApprove,
-  onViewPayslip,
-  loading,
-}) {
-  return (
-    <div style={styles.card}>
-      <div style={styles.listHeader}>
-        <div>
-          <h2
-            style={
-              styles.sectionTitle
-            }
-          >
-            Payroll Details
-          </h2>
-
-          <p style={styles.muted}>
-            {payroll.employeeId
-              ?.name ||
-              "Employee"}{" "}
-            ·{" "}
-            {
-              MONTHS[
-                payroll.payrollMonth -
-                  1
-              ]
-            }{" "}
-            {payroll.payrollYear}
-          </p>
-        </div>
-
-        <span
-          style={{
-            ...styles.status,
-            ...getStatusStyle(
-              payroll.status
-            ),
-          }}
-        >
-          {payroll.status}
-        </span>
-      </div>
-
-      <div style={styles.summaryGrid}>
-        <SummaryCard
-          label="Gross Pay"
-          value={formatMoney(
-            payroll.grossPay
-          )}
-        />
-
-        <SummaryCard
-          label="Total Deductions"
-          value={formatMoney(
-            payroll.totalDeductions
-          )}
-        />
-
-        <SummaryCard
-          label="Net Salary"
-          value={formatMoney(
-            payroll.netPay
-          )}
-        />
-
-        <SummaryCard
-          label="Employer Cost"
-          value={formatMoney(
-            payroll.employerCost
-          )}
-        />
-      </div>
-
-      <div style={styles.columns}>
-        <PayrollBreakdown
-          title="Earnings"
-          rows={[
-            [
-              "Basic",
-              payroll.earnings?.basic,
-            ],
-            [
-              "HRA",
-              payroll.earnings?.hra,
-            ],
-            [
-              "Special Allowance",
-              payroll.earnings
-                ?.specialAllowance,
-            ],
-            [
-              "Conveyance",
-              payroll.earnings
-                ?.conveyanceAllowance,
-            ],
-            [
-              "Medical Allowance",
-              payroll.earnings
-                ?.medicalAllowance,
-            ],
-            [
-              "Other Allowance",
-              payroll.earnings
-                ?.otherAllowance,
-            ],
-            [
-              "Bonus",
-              payroll.earnings?.bonus,
-            ],
-            [
-              "Overtime",
-              payroll.earnings?.overtime,
-            ],
-            [
-              "Arrears",
-              payroll.earnings?.arrears,
-            ],
-            [
-              "Reimbursements",
-              payroll.earnings
-                ?.reimbursements,
-            ],
-          ]}
-          totalLabel="Gross Pay"
-          total={payroll.grossPay}
-        />
-
-        <PayrollBreakdown
-          title="Deductions"
-          rows={[
-            [
-              "Employee PF",
-              payroll.deductions
-                ?.employeePf,
-            ],
-            [
-              "Employee ESI",
-              payroll.deductions
-                ?.employeeEsi,
-            ],
-            [
-              "Professional Tax",
-              payroll.deductions
-                ?.professionalTax,
-            ],
-            [
-              "TDS",
-              payroll.deductions?.tds,
-            ],
-            [
-              "Voluntary PF",
-              payroll.deductions
-                ?.voluntaryPf,
-            ],
-            [
-              "Other",
-              payroll.deductions?.other,
-            ],
-          ]}
-          totalLabel="Total Deductions"
-          total={
-            payroll.totalDeductions
-          }
-        />
-      </div>
-
-      <div style={styles.employerBox}>
-        <h3
-          style={styles.subTitle}
-        >
-          Employer Contributions
-        </h3>
-
-        <div style={styles.row}>
-          <span>Employer PF</span>
-
-          <strong>
-            {formatMoney(
-              payroll
-                .employerContributions
-                ?.employerPf
-            )}
-          </strong>
-        </div>
-
-        <div style={styles.row}>
-          <span>Employer ESI</span>
-
-          <strong>
-            {formatMoney(
-              payroll
-                .employerContributions
-                ?.employerEsi
-            )}
-          </strong>
-        </div>
-      </div>
-
-      <div style={styles.footer}>
-        <div>
-          <span style={styles.muted}>
-            Calculated
-          </span>
-
-          <div>
-            {formatDate(
-              payroll.calculatedAt
-            )}
-          </div>
-        </div>
-
-        <div
-          style={
-            styles.actionGroup
-          }
-        >
-          <button
-            onClick={
-              onViewPayslip
-            }
-            style={
-              styles.secondaryButton
-            }
-          >
-            View Payslip
-          </button>
-
-          {payroll.status ===
-            "calculated" && (
-            <button
-              onClick={onApprove}
-              disabled={loading}
-              style={
-                styles.approveButton
-              }
-            >
-              {loading
-                ? "Approving..."
-                : "Approve Payroll"}
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PayrollBreakdown({
-  title,
-  rows,
-  totalLabel,
-  total,
-}) {
-  return (
-    <div>
-      <h3
-        style={styles.subTitle}
-      >
-        {title}
-      </h3>
-
-      <div
-        style={styles.breakdown}
-      >
-        {rows.map(
-          ([label, value]) => (
-            <div
-              style={styles.row}
-              key={label}
-            >
-              <span>{label}</span>
-
-              <span>
-                {formatMoney(value)}
-              </span>
-            </div>
-          )
-        )}
-
-        <div
-          style={{
-            ...styles.row,
-            ...styles.totalRow,
-          }}
-        >
-          <strong>
-            {totalLabel}
-          </strong>
-
-          <strong>
-            {formatMoney(total)}
-          </strong>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SummaryCard({
-  label,
-  value,
-}) {
-  return (
-    <div
-      style={
-        styles.summaryCard
-      }
-    >
-      <span style={styles.muted}>
-        {label}
-      </span>
-
-      <strong
-        style={
-          styles.summaryValue
-        }
-      >
-        {value}
-      </strong>
-    </div>
-  );
-}
-
-const getStatusStyle = (
-  status
-) => {
-  if (status === "approved") {
-    return {
-      background: "#dcfce7",
-      color: "#166534",
-    };
-  }
-
-  if (status === "paid") {
-    return {
-      background: "#dbeafe",
-      color: "#1e40af",
-    };
-  }
-
-  if (status === "locked") {
-    return {
-      background: "#f3e8ff",
-      color: "#6b21a8",
-    };
-  }
-
-  return {
-    background: "#fef3c7",
-    color: "#92400e",
-  };
-};
-
-const styles = {
-  page: {
-    maxWidth: "1200px",
-    margin: "0 auto",
-    padding: "24px",
-  },
-
-  header: {
-    marginBottom: "24px",
-  },
-
-  title: {
-    margin: 0,
-    fontSize: "30px",
-  },
-
-  subtitle: {
-    marginTop: "6px",
-    color: "#64748b",
-  },
-
-  card: {
-    background: "#ffffff",
-    border: "1px solid #e2e8f0",
-    borderRadius: "12px",
-    padding: "24px",
-    marginBottom: "24px",
-  },
-
-  sectionTitle: {
-    margin: 0,
-    fontSize: "20px",
-  },
-
-  subTitle: {
-    fontSize: "16px",
-    marginBottom: "12px",
-  },
-
-  muted: {
-    color: "#64748b",
-    fontSize: "14px",
-  },
-
-  grid: {
-    display: "grid",
-    gridTemplateColumns:
-      "repeat(auto-fit, minmax(180px, 1fr))",
-    gap: "16px",
-    marginTop: "20px",
-  },
-
-  field: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "6px",
-  },
-
-  label: {
-    fontSize: "14px",
-    fontWeight: 600,
-  },
-
-  input: {
-    padding: "10px 12px",
-    border: "1px solid #cbd5e1",
-    borderRadius: "8px",
-    fontSize: "14px",
-    background: "#fff",
-  },
-
-  buttonRow: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: "10px",
-    marginTop: "20px",
-  },
-
-  primaryButton: {
-    padding: "11px 18px",
-    border: "none",
-    borderRadius: "8px",
-    background: "#2563eb",
-    color: "#fff",
-    fontWeight: 600,
-    cursor: "pointer",
-  },
-
-  bulkButton: {
-    padding: "11px 18px",
-    border: "1px solid #2563eb",
-    borderRadius: "8px",
-    background: "#fff",
-    color: "#2563eb",
-    fontWeight: 600,
-    cursor: "pointer",
-  },
-
-  secondaryButton: {
-    padding: "9px 14px",
-    border: "1px solid #cbd5e1",
-    borderRadius: "8px",
-    background: "#fff",
-    cursor: "pointer",
-  },
-
-  approveButton: {
-    padding: "11px 18px",
-    border: "none",
-    borderRadius: "8px",
-    background: "#16a34a",
-    color: "#fff",
-    fontWeight: 600,
-    cursor: "pointer",
-  },
-
-  error: {
-    padding: "12px 16px",
-    marginBottom: "16px",
-    borderRadius: "8px",
-    background: "#fee2e2",
-    color: "#991b1b",
-  },
-
-  success: {
-    padding: "12px 16px",
-    marginBottom: "16px",
-    borderRadius: "8px",
-    background: "#dcfce7",
-    color: "#166534",
-  },
-
-  listHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: "16px",
-    marginBottom: "20px",
-  },
-
-  summaryGrid: {
-    display: "grid",
-    gridTemplateColumns:
-      "repeat(auto-fit, minmax(180px, 1fr))",
-    gap: "16px",
-    marginBottom: "28px",
-  },
-
-  summaryCard: {
-    padding: "18px",
-    border: "1px solid #e2e8f0",
-    borderRadius: "10px",
-  },
-
-  summaryValue: {
-    display: "block",
-    fontSize: "20px",
-    marginTop: "6px",
-  },
-
-  columns: {
-    display: "grid",
-    gridTemplateColumns:
-      "repeat(auto-fit, minmax(300px, 1fr))",
-    gap: "32px",
-  },
-
-  breakdown: {
-    border: "1px solid #e2e8f0",
-    borderRadius: "8px",
-    overflow: "hidden",
-  },
-
-  row: {
-    display: "flex",
-    justifyContent: "space-between",
-    padding: "10px 14px",
-    borderBottom:
-      "1px solid #f1f5f9",
-  },
-
-  totalRow: {
-    background: "#f8fafc",
-    borderBottom: "none",
-  },
-
-  employerBox: {
-    marginTop: "28px",
-    padding: "16px",
-    background: "#f8fafc",
-    borderRadius: "8px",
-  },
-
-  footer: {
-    marginTop: "28px",
-    paddingTop: "20px",
-    borderTop:
-      "1px solid #e2e8f0",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: "16px",
-  },
-
-  actionGroup: {
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-  },
-
-  status: {
-    display: "inline-block",
-    padding: "5px 10px",
-    borderRadius: "999px",
-    fontSize: "12px",
-    fontWeight: 600,
-    textTransform: "capitalize",
-  },
-
-  tableWrapper: {
-    overflowX: "auto",
-  },
-
-  table: {
-    width: "100%",
-    borderCollapse: "collapse",
-  },
-
-  th: {
-    textAlign: "left",
-    padding: "12px",
-    background: "#f8fafc",
-    borderBottom:
-      "1px solid #e2e8f0",
-    fontSize: "13px",
-  },
-
-  td: {
-    padding: "12px",
-    borderBottom:
-      "1px solid #f1f5f9",
-    fontSize: "14px",
-  },
-
-  empty: {
-    color: "#64748b",
-    padding: "20px 0",
-  },
-
-  bulkErrors: {
-    marginTop: "20px",
-    border: "1px solid #e2e8f0",
-    borderRadius: "8px",
-    overflow: "hidden",
-  },
-
-  bulkErrorRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: "20px",
-    padding: "12px 14px",
-    borderBottom:
-      "1px solid #f1f5f9",
-    fontSize: "14px",
-  },
-};
