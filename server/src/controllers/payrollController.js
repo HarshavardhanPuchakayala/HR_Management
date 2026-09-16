@@ -9,7 +9,7 @@ import PayrollRun from "../models/PayrollRun.js";
 
 import {
   calculatePayroll,
-} from "../services/payroll/payrollCalculator.js";
+} from "../services/payroll/payrollcalculator.js";
 
 import {
   calculatePayrollTds,
