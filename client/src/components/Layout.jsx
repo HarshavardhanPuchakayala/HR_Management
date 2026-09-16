@@ -19,7 +19,7 @@ import {
   LuLogOut,
 } from "react-icons/lu";
 import { useAuth } from "../context/AuthContext.jsx";
-import AssistantWidget from "./AssistantWidget.jsx";
+import AssistantWidget from "./Assistantwidget.jsx";
 import { movePill, prefersReducedMotion } from "../lib/Motion.js";
 
 const NavItem = ({ to, icon: Icon, label }) => (
