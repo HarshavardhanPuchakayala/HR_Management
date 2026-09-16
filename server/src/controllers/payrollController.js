@@ -1,3 +1,4 @@
+
 import mongoose from "mongoose";
 
 import Employee from "../models/Employee.js";
@@ -21,11 +22,22 @@ const isValidObjectId = (id) =>
   mongoose.Types.ObjectId.isValid(id);
 
 const isValidYear = (year) =>
-  Number.isInteger(year) && year >= 2020 && year <= 2100;
+  Number.isInteger(year) &&
+  year >= 2020 &&
+  year <= 2100;
 
 const getPeriod = (month, year) => {
-  const periodStart = new Date(year, month - 1, 1);
-  const periodEnd = new Date(year, month, 0);
+  const periodStart = new Date(
+    year,
+    month - 1,
+    1
+  );
+
+  const periodEnd = new Date(
+    year,
+    month,
+    0
+  );
 
   return {
     periodStart,
@@ -41,12 +53,20 @@ const getActiveCompensation = async (
   const query = Compensation.findOne({
     employeeId,
     status: "active",
+
     effectiveFrom: {
       $lte: payrollDate,
     },
+
     $or: [
-      { effectiveTo: null },
-      { effectiveTo: { $gte: payrollDate } },
+      {
+        effectiveTo: null,
+      },
+      {
+        effectiveTo: {
+          $gte: payrollDate,
+        },
+      },
     ],
   }).sort({
     effectiveFrom: -1,
@@ -66,12 +86,20 @@ const getPayrollRule = async (
   const query = PayrollRule.findOne({
     country: "IN",
     state: "TS",
+
     effectiveFrom: {
       $lte: payrollDate,
     },
+
     $or: [
-      { effectiveTo: null },
-      { effectiveTo: { $gte: payrollDate } },
+      {
+        effectiveTo: null,
+      },
+      {
+        effectiveTo: {
+          $gte: payrollDate,
+        },
+      },
     ],
   }).sort({
     effectiveFrom: -1,
@@ -98,10 +126,11 @@ const buildPayroll = async ({
     1
   );
 
-  const profileQuery = PayrollProfile.findOne({
-    employeeId,
-    status: "active",
-  });
+  const profileQuery =
+    PayrollProfile.findOne({
+      employeeId,
+      status: "active",
+    });
 
   if (session) {
     profileQuery.session(session);
@@ -113,11 +142,13 @@ const buildPayroll = async ({
     payrollRule,
   ] = await Promise.all([
     profileQuery,
+
     getActiveCompensation(
       employeeId,
       payrollDate,
       session
     ),
+
     getPayrollRule(
       payrollDate,
       session
@@ -125,7 +156,9 @@ const buildPayroll = async ({
   ]);
 
   if (!profile) {
-    throw new Error("Payroll profile not found");
+    throw new Error(
+      "Payroll profile not found"
+    );
   }
 
   if (!compensation) {
@@ -135,7 +168,9 @@ const buildPayroll = async ({
   }
 
   if (!payrollRule) {
-    throw new Error("Payroll rule not found");
+    throw new Error(
+      "Payroll rule not found"
+    );
   }
 
   const result = calculatePayroll({
@@ -150,7 +185,8 @@ const buildPayroll = async ({
     employeeId,
     payrollMonth: month,
     payrollYear: year,
-    currentGrossPay: result.grossPay,
+    currentGrossPay:
+      result.grossPay,
     profile,
     payrollRule,
   });
@@ -188,18 +224,28 @@ const buildPayroll = async ({
 
   result.statutoryBreakdown = {
     ...result.statutoryBreakdown,
+
     incomeTax: {
       taxYear: tax.taxYear,
+
       projectedAnnualGross:
         tax.projectedAnnualGross,
+
       annualTaxableIncome:
         tax.annualTaxableIncome,
-      annualTax: tax.annualTax,
-      previousTds: tax.previousTds,
+
+      annualTax:
+        tax.annualTax,
+
+      previousTds:
+        tax.previousTds,
+
       previousEmployerTds:
         tax.previousEmployerTds,
+
       remainingAnnualTax:
         tax.remainingAnnualTax,
+
       currentMonthTds:
         tax.currentMonthTds,
     },
@@ -213,7 +259,9 @@ const buildPayroll = async ({
   };
 };
 
-const getPayrollErrorMessage = (error) => {
+const getPayrollErrorMessage = (
+  error
+) => {
   const knownErrors = new Set([
     "Payroll profile not found",
     "Active compensation not found",
@@ -227,7 +275,8 @@ const getPayrollErrorMessage = (error) => {
   }
 
   if (
-    error?.name === "ValidationError"
+    error?.name ===
+    "ValidationError"
   ) {
     return "Invalid payroll data";
   }
@@ -251,16 +300,24 @@ export const calculateEmployeePayroll =
         paidDays,
       } = req.body;
 
-      if (!isValidObjectId(employeeId)) {
+      if (
+        !isValidObjectId(employeeId)
+      ) {
         return res.status(400).json({
-          message: "Invalid employee ID",
+          message:
+            "Invalid employee ID",
         });
       }
 
-      const payrollMonth = Number(month);
-      const payrollYear = Number(year);
+      const payrollMonth =
+        Number(month);
+
+      const payrollYear =
+        Number(year);
+
       const totalWorkingDays =
         Number(workingDays);
+
       const totalPaidDays =
         Number(paidDays);
 
@@ -272,15 +329,19 @@ export const calculateEmployeePayroll =
         payrollMonth > 12
       ) {
         return res.status(400).json({
-          message: "Invalid payroll month",
+          message:
+            "Invalid payroll month",
         });
       }
 
       if (
-        !isValidYear(payrollYear)
+        !isValidYear(
+          payrollYear
+        )
       ) {
         return res.status(400).json({
-          message: "Invalid payroll year",
+          message:
+            "Invalid payroll year",
         });
       }
 
@@ -332,12 +393,14 @@ export const calculateEmployeePayroll =
 
       if (!employee) {
         return res.status(404).json({
-          message: "Employee not found",
+          message:
+            "Employee not found",
         });
       }
 
       if (
-        employee.status === "inactive"
+        employee.status ===
+        "inactive"
       ) {
         return res.status(400).json({
           message:
@@ -377,38 +440,59 @@ export const calculateEmployeePayroll =
               [
                 {
                   employeeId,
+
                   payrollMonth,
+
                   payrollYear,
+
                   periodStart,
+
                   periodEnd,
+
                   workingDays:
                     result.workingDays,
+
                   paidDays:
                     result.paidDays,
+
                   lossOfPayDays:
                     result.lossOfPayDays,
+
                   earnings:
                     result.earnings,
+
                   grossPay:
                     result.grossPay,
+
                   taxableIncome:
                     result.taxableIncome,
+
                   deductions:
                     result.deductions,
+
                   totalDeductions:
                     result.totalDeductions,
+
                   netPay:
                     result.netPay,
+
                   employerContributions:
                     result.employerContributions,
+
                   employerCost:
                     result.employerCost,
+
                   statutoryBreakdown:
                     result.statutoryBreakdown,
+
                   statutoryRuleVersion:
                     payrollRule.version,
-                  status: "calculated",
-                  calculatedAt: new Date(),
+
+                  status:
+                    "calculated",
+
+                  calculatedAt:
+                    new Date(),
                 },
               ],
               { session }
@@ -417,18 +501,27 @@ export const calculateEmployeePayroll =
           createdPayroll =
             created[0];
 
+          // IMPORTANT:
+          // Use result.taxableIncome instead of result.grossPay.
           await updatePayrollYtd({
             employeeId,
+
             payrollMonth,
+
             payrollYear,
+
             grossPay:
               result.grossPay,
+
             taxableIncome:
-              result.grossPay,
+              result.taxableIncome,
+
             tds:
               result.deductions.tds,
+
             taxRegime:
               profile.taxRegime,
+
             session,
           });
         }
@@ -436,8 +529,13 @@ export const calculateEmployeePayroll =
 
       await createAuditLog({
         req,
-        action: "PAYROLL_CALCULATED",
-        entityType: "PayrollRun",
+
+        action:
+          "PAYROLL_CALCULATED",
+
+        entityType:
+          "PayrollRun",
+
         entityId:
           createdPayroll._id,
       });
@@ -445,7 +543,9 @@ export const calculateEmployeePayroll =
       return res.status(201).json({
         message:
           "Payroll calculated successfully",
-        payroll: createdPayroll,
+
+        payroll:
+          createdPayroll,
       });
     } catch (error) {
       console.error(
@@ -453,7 +553,9 @@ export const calculateEmployeePayroll =
         error
       );
 
-      if (error?.code === 11000) {
+      if (
+        error?.code === 11000
+      ) {
         return res.status(409).json({
           message:
             "Payroll already exists for this employee and month",
@@ -475,10 +577,13 @@ export const calculateEmployeePayroll =
           "Payroll profile not found",
           "Active compensation not found",
           "Payroll rule not found",
-        ].includes(error?.message)
+        ].includes(
+          error?.message
+        )
       ) {
         return res.status(400).json({
-          message: error.message,
+          message:
+            error.message,
         });
       }
 
@@ -500,10 +605,15 @@ export const calculateBulkPayroll =
       paidDays,
     } = req.body;
 
-    const payrollMonth = Number(month);
-    const payrollYear = Number(year);
+    const payrollMonth =
+      Number(month);
+
+    const payrollYear =
+      Number(year);
+
     const totalWorkingDays =
       Number(workingDays);
+
     const totalPaidDays =
       Number(paidDays);
 
@@ -515,15 +625,19 @@ export const calculateBulkPayroll =
       payrollMonth > 12
     ) {
       return res.status(400).json({
-        message: "Invalid payroll month",
+        message:
+          "Invalid payroll month",
       });
     }
 
     if (
-      !isValidYear(payrollYear)
+      !isValidYear(
+        payrollYear
+      )
     ) {
       return res.status(400).json({
-        message: "Invalid payroll year",
+        message:
+          "Invalid payroll year",
       });
     }
 
@@ -569,10 +683,15 @@ export const calculateBulkPayroll =
       const results = {
         totalEmployees:
           employees.length,
+
         calculated: 0,
+
         skipped: 0,
+
         failed: 0,
+
         payrolls: [],
+
         errors: [],
       };
 
@@ -589,7 +708,9 @@ export const calculateBulkPayroll =
                 await PayrollRun.findOne({
                   employeeId:
                     employee._id,
+
                   payrollMonth,
+
                   payrollYear,
                 })
                   .session(session)
@@ -608,14 +729,19 @@ export const calculateBulkPayroll =
               } = await buildPayroll({
                 employeeId:
                   employee._id,
+
                 month:
                   payrollMonth,
+
                 year:
                   payrollYear,
+
                 workingDays:
                   totalWorkingDays,
+
                 paidDays:
                   totalPaidDays,
+
                 session,
               });
 
@@ -633,37 +759,57 @@ export const calculateBulkPayroll =
                     {
                       employeeId:
                         employee._id,
+
                       payrollMonth,
+
                       payrollYear,
+
                       periodStart,
+
                       periodEnd,
+
                       workingDays:
                         result.workingDays,
+
                       paidDays:
                         result.paidDays,
+
                       lossOfPayDays:
                         result.lossOfPayDays,
+
                       earnings:
                         result.earnings,
+
                       grossPay:
                         result.grossPay,
+
                       taxableIncome:
                         result.taxableIncome,
+
                       deductions:
                         result.deductions,
+
                       totalDeductions:
                         result.totalDeductions,
+
                       netPay:
                         result.netPay,
+
                       employerContributions:
                         result.employerContributions,
+
                       employerCost:
                         result.employerCost,
+
                       statutoryBreakdown:
                         result.statutoryBreakdown,
+
                       statutoryRuleVersion:
                         payrollRule.version,
-                      status: "calculated",
+
+                      status:
+                        "calculated",
+
                       calculatedAt:
                         new Date(),
                     },
@@ -674,19 +820,28 @@ export const calculateBulkPayroll =
               createdPayroll =
                 created[0];
 
+              // IMPORTANT:
+              // Use result.taxableIncome instead of result.grossPay.
               await updatePayrollYtd({
                 employeeId:
                   employee._id,
+
                 payrollMonth,
+
                 payrollYear,
+
                 grossPay:
                   result.grossPay,
+
                 taxableIncome:
-                  result.grossPay,
+                  result.taxableIncome,
+
                 tds:
                   result.deductions.tds,
+
                 taxRegime:
                   profile.taxRegime,
+
                 session,
               });
             }
@@ -696,8 +851,13 @@ export const calculateBulkPayroll =
 
           await createAuditLog({
             req,
-            action: "PAYROLL_CALCULATED",
-            entityType: "PayrollRun",
+
+            action:
+              "PAYROLL_CALCULATED",
+
+            entityType:
+              "PayrollRun",
+
             entityId:
               createdPayroll._id,
           });
@@ -705,16 +865,22 @@ export const calculateBulkPayroll =
           results.payrolls.push({
             employeeId:
               employee._id,
+
             employeeName:
               employee.name,
+
             payrollRunId:
               createdPayroll._id,
+
             grossPay:
               createdPayroll.grossPay,
+
             totalDeductions:
               createdPayroll.totalDeductions,
+
             netPay:
               createdPayroll.netPay,
+
             status:
               createdPayroll.status,
           });
@@ -728,9 +894,13 @@ export const calculateBulkPayroll =
             results.errors.push({
               employeeId:
                 employee._id,
+
               employeeName:
                 employee.name,
-              status: "skipped",
+
+              status:
+                "skipped",
+
               message:
                 "Payroll already exists for this month",
             });
@@ -740,9 +910,13 @@ export const calculateBulkPayroll =
             results.errors.push({
               employeeId:
                 employee._id,
+
               employeeName:
                 employee.name,
-              status: "failed",
+
+              status:
+                "failed",
+
               message:
                 getPayrollErrorMessage(
                   error
@@ -757,8 +931,13 @@ export const calculateBulkPayroll =
       return res.status(200).json({
         message:
           "Bulk payroll processing completed",
-        month: payrollMonth,
-        year: payrollYear,
+
+        month:
+          payrollMonth,
+
+        year:
+          payrollYear,
+
         results,
       });
     } catch (error) {
@@ -779,25 +958,32 @@ export const getPayrollRuns =
     try {
       const filter = {};
 
-      if (req.query.year !== undefined) {
-        const year = Number(
-          req.query.year
-        );
+      if (
+        req.query.year !==
+        undefined
+      ) {
+        const year =
+          Number(req.query.year);
 
-        if (!isValidYear(year)) {
+        if (
+          !isValidYear(year)
+        ) {
           return res.status(400).json({
             message:
               "Invalid payroll year",
           });
         }
 
-        filter.payrollYear = year;
+        filter.payrollYear =
+          year;
       }
 
-      if (req.query.month !== undefined) {
-        const month = Number(
-          req.query.month
-        );
+      if (
+        req.query.month !==
+        undefined
+      ) {
+        const month =
+          Number(req.query.month);
 
         if (
           !Number.isInteger(month) ||
@@ -810,18 +996,23 @@ export const getPayrollRuns =
           });
         }
 
-        filter.payrollMonth = month;
+        filter.payrollMonth =
+          month;
       }
 
       const payrollRuns =
-        await PayrollRun.find(filter)
+        await PayrollRun.find(
+          filter
+        )
           .populate(
             "employeeId",
             "name email department jobTitle"
           )
           .sort({
             payrollYear: -1,
+
             payrollMonth: -1,
+
             createdAt: -1,
           });
 
@@ -844,9 +1035,12 @@ export const getPayrollRuns =
 export const getPayrollRunById =
   async (req, res) => {
     try {
-      const { id } = req.params;
+      const { id } =
+        req.params;
 
-      if (!isValidObjectId(id)) {
+      if (
+        !isValidObjectId(id)
+      ) {
         return res.status(400).json({
           message:
             "Invalid payroll run ID",
@@ -890,9 +1084,12 @@ export const getPayrollRunById =
 export const getPayslip =
   async (req, res) => {
     try {
-      const { id } = req.params;
+      const { id } =
+        req.params;
 
-      if (!isValidObjectId(id)) {
+      if (
+        !isValidObjectId(id)
+      ) {
         return res.status(400).json({
           message:
             "Invalid payroll run ID",
@@ -918,7 +1115,8 @@ export const getPayslip =
       }
 
       return res.json({
-        payslip: payrollRun,
+        payslip:
+          payrollRun,
       });
     } catch (error) {
       console.error(
@@ -936,9 +1134,12 @@ export const getPayslip =
 export const approvePayroll =
   async (req, res) => {
     try {
-      const { id } = req.params;
+      const { id } =
+        req.params;
 
-      if (!isValidObjectId(id)) {
+      if (
+        !isValidObjectId(id)
+      ) {
         return res.status(400).json({
           message:
             "Invalid payroll run ID",
@@ -965,8 +1166,12 @@ export const approvePayroll =
         });
       }
 
-      payroll.status = "approved";
-      payroll.approvedAt = new Date();
+      payroll.status =
+        "approved";
+
+      payroll.approvedAt =
+        new Date();
+
       payroll.approvedBy =
         req.user._id;
 
@@ -974,14 +1179,21 @@ export const approvePayroll =
 
       await createAuditLog({
         req,
-        action: "PAYROLL_APPROVED",
-        entityType: "PayrollRun",
-        entityId: payroll._id,
+
+        action:
+          "PAYROLL_APPROVED",
+
+        entityType:
+          "PayrollRun",
+
+        entityId:
+          payroll._id,
       });
 
       return res.json({
         message:
           "Payroll approved successfully",
+
         payroll,
       });
     } catch (error) {

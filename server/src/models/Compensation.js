@@ -1,3 +1,4 @@
+
 import mongoose from "mongoose";
 
 const compensationSchema = new mongoose.Schema(
@@ -104,12 +105,35 @@ const compensationSchema = new mongoose.Schema(
   }
 );
 
+// Validate compensation dates
+compensationSchema.pre("validate", function (next) {
+  if (
+    this.effectiveTo &&
+    this.effectiveTo < this.effectiveFrom
+  ) {
+    return next(
+      new Error(
+        "effectiveTo cannot be before effectiveFrom"
+      )
+    );
+  }
+
+  next();
+});
+
+// Useful query index
 compensationSchema.index({
   employeeId: 1,
+  status: 1,
   effectiveFrom: -1,
 });
 
-export default mongoose.model(
-  "Compensation",
-  compensationSchema
-);
+// Prevent model overwrite errors
+const Compensation =
+  mongoose.models.Compensation ||
+  mongoose.model(
+    "Compensation",
+    compensationSchema
+  );
+
+export default Compensation;
